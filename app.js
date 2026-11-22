@@ -85,7 +85,43 @@ var ART = {
 /* ===================== API ===================== */
 var ADMIN_ACTIONS = ['desk', 'saveWork', 'uploadPoster', 'cast', 'saveActor', 'reissueCode', 'setActorActive',
   'shelf', 'saveScriptNote', 'setScriptStatus', 'startUpload', 'uploadChunk', 'downloadChunk'];
+var WRITES = ['saveWork', 'uploadPoster', 'saveActor', 'reissueCode', 'setActorActive', 'saveScriptNote', 'setScriptStatus', 'uploadChunk'];
 function api(action, payload) {
+  return rawApi(action, payload).then(function (d) {
+    if (WRITES.indexOf(action) >= 0) clearReads();
+    return d;
+  }, function (e) {
+    var code = store.get('adminCode', '');
+    if (e && e.code === 'auth' && code && ADMIN_ACTIONS.indexOf(action) >= 0) {
+      /* 管理者の入館証が切れたら、覚えているコードで入り直す */
+      return rawApi('adminLogin', { code: code }).then(function (r) {
+        store.set('admin', r.token); return api(action, payload);
+      }, function () { store.del('adminCode'); throw e; });
+    }
+    throw e;
+  });
+}
+/* 読み込みを速くする：前回の結果をすぐ出し、裏で最新を取って違えば描き直す */
+function ckey(action, payload) { return 'c.' + action + '.' + JSON.stringify(payload || {}); }
+function clearReads() {
+  try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('gakuya.c.') === 0) localStorage.removeItem(k); }); } catch (e) { }
+}
+function cachedAll(list, show) {
+  var olds = list.map(function (x) { return store.get(ckey(x[0], x[1]), null); });
+  var shown = olds.every(function (v) { return v !== null; }) ? JSON.stringify(olds) : null;
+  if (shown) show(olds, true);
+  return Promise.all(list.map(function (x) {
+    return api(x[0], x[1]).then(function (d) { store.set(ckey(x[0], x[1]), d); return d; });
+  })).then(function (r) {
+    if (JSON.stringify(r) !== shown) show(r, false);
+    return r;
+  }, function (e) {
+    if (shown && e && e.code === 'network') return olds;
+    throw e;
+  });
+}
+function prefetch(list) { cachedAll(list, function () { }).catch(function () { }); }
+function rawApi(action, payload) {
   payload = payload || {};
   var token = ADMIN_ACTIONS.indexOf(action) >= 0 ? store.get('admin', '') :
     action === 'me' ? (store.get('passes', {})[payload.workId] || '') : '';
@@ -106,7 +142,8 @@ function onAuthError(e, area) {
 }
 
 /* ===================== ポスター ===================== */
-var posterCache = {};
+var posterCache = store.get('posters', {});
+function savePosters() { store.set('posters', posterCache); }
 function posterArt(w, small) {
   var src = posterCache[w.id];
   if (src) return '<img src="' + src + '" alt="">';
@@ -114,7 +151,7 @@ function posterArt(w, small) {
 }
 function loadPosters(works, after) {
   works.filter(function (w) { return w.hasPoster && !posterCache[w.id]; }).forEach(function (w) {
-    api('poster', { workId: w.id }).then(function (src) { if (src) { posterCache[w.id] = src; after(w.id); } }).catch(function () { });
+    api('poster', { workId: w.id }).then(function (src) { if (src) { posterCache[w.id] = src; savePosters(); after(w.id); } }).catch(function () { });
   });
 }
 
@@ -130,7 +167,9 @@ function viewDoor() {
     '<span class="th-valance" aria-hidden="true"></span><div class="doors" id="board"><div class="skel"></div><div class="skel"></div></div><span class="th-floor" aria-hidden="true"></span></div>' +
     '<p class="foot"><a class="link" href="#/admin">舞台監督（管理者）の方はこちら</a></p></main>';
   bindInstall();
-  api('listWorks').then(function (works) {
+  if (store.get('admin', '')) prefetch([['desk'], ['shelf', {}]]);
+  cachedAll([['listWorks']], function (r) {
+    var works = r[0];
     var b = document.getElementById('board');
     if (!b) return;
     if (!works.length) { b.outerHTML = '<div class="empty">まだ台本が届いていません。<br>舞台監督が作品を登録するとここに並びます。</div>'; return; }
@@ -148,6 +187,7 @@ function viewDoor() {
     };
     loadPosters(works, function () { });
   }).catch(function (e) {
+    if (store.get(ckey('listWorks'), null)) return;
     var b = document.getElementById('board');
     if (b) b.outerHTML = '<div class="empty">' + esc(e.message) + '</div>';
   });
@@ -562,11 +602,12 @@ function viewAdminLogin() {
     '<p class="note" style="margin:0 0 12px">GASで setup を実行したときに出たコードです。</p>' +
     '<label class="sr" for="adminCode">管理者コード</label><input class="code-in" id="adminCode" maxlength="12" autocapitalize="characters" spellcheck="false" style="letter-spacing:.2em">' +
     '<div class="say">' + ART.sheep() + '<div class="bubble" id="loginSay">プロンプトデスクへようこそ</div></div>' +
-    '<button class="btn brand wide" style="margin-top:12px">入る</button></form></main>';
+    '<button class="btn brand wide" style="margin-top:12px">入る</button>' +
+    '<p class="note" style="margin:10px 0 0">この端末では、次から入力しなくても入れます。</p></form></main>';
   document.getElementById('loginForm').onsubmit = function (e) {
     e.preventDefault();
     var code = document.getElementById('adminCode').value;
-    api('adminLogin', { code: code }).then(function (r) { store.set('admin', r.token); go('/admin'); })
+    api('adminLogin', { code: code }).then(function (r) { store.set('admin', r.token); store.set('adminCode', code); prefetch([['desk'], ['shelf', {}]]); go('/admin'); })
       .catch(function (err) { document.getElementById('loginSay').textContent = err.message; });
   };
 }
@@ -578,9 +619,11 @@ function viewDesk() {
     '<p class="note" style="margin:0">作品ごとの状態です。ランプ：緑＝稽古中、黄＝準備中、灰＝終演</p>' +
     '<a class="btn main" href="#/admin/w/new">＋ 新しい作品</a></div><div class="desk" id="desk">' + loading() + '</div>' +
     '<p class="note" style="margin-top:22px;text-align:center"><a href="check.html">この端末の動作チェック（マイク・聞き取りなど）</a></p></main>';
-  document.getElementById('logout').onclick = function () { store.del('admin'); go('/'); };
-  api('desk').then(function (works) {
+  document.getElementById('logout').onclick = logout;
+  cachedAll([['desk']], function (r, old) {
+    var works = r[0];
     var d = document.getElementById('desk'); if (!d) return;
+    if (!old) { prefetch([['shelf', {}]]); works.forEach(function (w) { prefetch([['cast', { workId: w.id }]]); }); }
     if (!works.length) { d.innerHTML = '<div class="card"><h2>最初の作品を登録しましょう</h2><p class="note">ポスター、公演日、出演者を登録すると、劇団員に入館パスを配れます。</p></div>'; return; }
     d.innerHTML = works.map(function (w) {
       return '<a class="deskrow" href="#/admin/w/' + esc(w.id) + '"><span class="thumb" data-art="' + esc(w.id) + '">' + posterArt(w, true) + '</span>' +
@@ -597,13 +640,14 @@ function viewDesk() {
 function viewAdminWork(id) {
   var isNew = id === 'new';
   app.innerHTML = dayHead(isNew ? '新しい作品' : '作品の設定', '<a class="btn ghost sm" href="#/admin">← デスク</a>') + '<main class="wrap" id="aw">' + loading() + '</main>';
-  var p = isNew ? Promise.resolve([null, []]) : Promise.all([api('desk'), api('cast', { workId: id })]).then(function (r) {
+  if (isNew) { renderAdminWork(null, []); return; }
+  var busy = function () { var m = document.getElementById('aw'); return m && m.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName); };
+  cachedAll([['desk'], ['cast', { workId: id }]], function (r, old) {
     var w = r[0].filter(function (x) { return x.id === id; })[0];
-    if (!w) throw { code: 'notfound', message: 'この作品は見つかりません' };
-    return [w, r[1]];
-  });
-  p.then(function (r) { renderAdminWork(r[0], r[1]); })
-    .catch(function (e) { if (!onAuthError(e, 'admin')) document.getElementById('aw').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
+    if (!w) { if (!old) throw { code: 'notfound', message: 'この作品は見つかりません' }; return; }
+    if (!old && busy()) return; /* 入力中は描き直さない */
+    renderAdminWork(w, r[1]);
+  }).catch(function (e) { if (!onAuthError(e, 'admin')) document.getElementById('aw').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
 }
 function renderAdminWork(w, cast) {
   w = w || { title: '', firstDate: '', lastDate: '', venue: '', status: 'prep', note: '' };
@@ -636,7 +680,7 @@ function renderAdminWork(w, cast) {
   document.getElementById('pfile').onchange = function (e) {
     var file = e.target.files[0]; if (!file) return;
     toast('ポスターを保存しています…');
-    shrink(file, 900).then(function (dataUrl) { return api('uploadPoster', { workId: w.id, dataUrl: dataUrl }).then(function () { posterCache[w.id] = dataUrl; }); })
+    shrink(file, 900).then(function (dataUrl) { return api('uploadPoster', { workId: w.id, dataUrl: dataUrl }).then(function () { posterCache[w.id] = dataUrl; savePosters(); }); })
       .then(function () { document.getElementById('pthumb').innerHTML = posterArt(w, true); toast('ポスターを貼りました'); })
       .catch(function (err) { if (!onAuthError(err, 'admin')) toast(err.message || '画像を読み込めませんでした'); });
   };
@@ -759,15 +803,101 @@ function downloadScript(x, onProgress) {
   };
   return step(0);
 }
+/* 台本は版ごとに中身が変わらないので、一度取ったら端末に置いておく */
+var FILES = 'gakuya-files';
+function scriptBlob(x, onProgress) {
+  var key = './__script/' + x.id;
+  var fromNet = function () {
+    return downloadScript(x, onProgress).then(function (blob) {
+      if (window.caches) caches.open(FILES).then(function (c) { return c.put(key, new Response(blob, { headers: { 'Content-Type': 'application/pdf' } })); }).catch(function () { });
+      return blob;
+    });
+  };
+  if (!window.caches || MODE === 'demo') return fromNet();
+  return caches.open(FILES).then(function (c) { return c.match(key); }).then(function (hit) {
+    return hit ? hit.blob() : fromNet();
+  }, fromNet);
+}
+/* 台本ビューア：PDFをそのままの見た目（縦書きは縦書き）で、アプリの中に表示する */
+var PDFJS = window.PDFJS_BASE || 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/';
+var pdfjsReady = null;
+function loadPdfJs() {
+  if (pdfjsReady) return pdfjsReady;
+  pdfjsReady = new Promise(function (resolve, reject) {
+    var s = document.createElement('script');
+    s.src = PDFJS + 'legacy/build/pdf.min.js';
+    s.onload = function () { window.pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS + 'legacy/build/pdf.worker.min.js'; resolve(window.pdfjsLib); };
+    s.onerror = function () { pdfjsReady = null; reject({ message: '台本を表示する部品を読み込めませんでした。電波のよい場所で試してください' }); };
+    document.head.appendChild(s);
+  });
+  return pdfjsReady;
+}
+function viewPdf(blob, x) {
+  var v = document.createElement('div'); v.className = 'viewer'; v.setAttribute('role', 'dialog'); v.setAttribute('aria-label', x.label);
+  v.innerHTML = '<div class="vw-bar"><b>' + esc(x.label) + '</b><span class="vw-tools">' +
+    '<button class="btn quiet sm" data-z="-1" aria-label="小さく">－</button><button class="btn quiet sm" data-z="1" aria-label="大きく">＋</button>' +
+    '<button class="btn quiet sm" data-rot aria-label="回転">↻</button><button class="btn main sm" data-close>閉じる</button></span></div>' +
+    '<div class="vw-pages">' + loading() + '</div>';
+  document.body.appendChild(v); document.body.classList.add('noscroll');
+  var pages = v.querySelector('.vw-pages'), doc = null, zoom = 1, rot = 0, io = null, alive = true;
+  var ZOOMS = [1, 1.5, 2, 3];
+  var close = function () { alive = false; if (io) io.disconnect(); if (doc) doc.destroy(); v.remove(); document.body.classList.remove('noscroll'); };
+  var draw = function (holder) {
+    var n = +holder.dataset.n; holder.dataset.done = '1';
+    doc.getPage(n).then(function (pg) {
+      if (!alive) return;
+      var base = pg.getViewport({ scale: 1, rotation: (pg.rotate + rot) % 360 });
+      var cssW = holder.clientWidth, dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+      var vp = pg.getViewport({ scale: cssW / base.width * dpr, rotation: (pg.rotate + rot) % 360 });
+      var c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+      holder.style.aspectRatio = base.width + ' / ' + base.height;
+      return pg.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise.then(function () {
+        if (!alive) return; holder.innerHTML = ''; holder.appendChild(c);
+      });
+    }).catch(function () { holder.dataset.done = ''; });
+  };
+  var layout = function () {
+    if (io) io.disconnect();
+    return doc.getPage(1).then(function (p1) {
+      var b = p1.getViewport({ scale: 1, rotation: (p1.rotate + rot) % 360 });
+      var html = '';
+      for (var i = 1; i <= doc.numPages; i++) html += '<div class="vw-page" data-n="' + i + '" style="width:' + (zoom * 100) + '%;aspect-ratio:' + b.width + ' / ' + b.height + '"><span>' + i + '</span></div>';
+      pages.innerHTML = html;
+      io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting && !e.target.dataset.done) draw(e.target); }); }, { root: pages, rootMargin: '800px 400px' });
+      pages.querySelectorAll('.vw-page').forEach(function (h) { io.observe(h); });
+    });
+  };
+  v.addEventListener('click', function (e) {
+    var t = e.target.closest('button'); if (!t) return;
+    if (t.hasAttribute('data-close')) return close();
+    if (!doc) return;
+    if (t.hasAttribute('data-rot')) { rot = (rot + 90) % 360; layout(); return; }
+    var i = ZOOMS.indexOf(zoom) + (+t.dataset.z); if (i < 0 || i >= ZOOMS.length) return;
+    var keep = pages.scrollTop / (pages.scrollHeight || 1);
+    zoom = ZOOMS[i]; layout().then(function () { pages.scrollTop = keep * pages.scrollHeight; });
+  });
+  loadPdfJs().then(function (lib) {
+    return blob.arrayBuffer().then(function (buf) {
+      return lib.getDocument({ data: new Uint8Array(buf), cMapUrl: PDFJS + 'cmaps/', cMapPacked: true, standardFontDataUrl: PDFJS + 'standard_fonts/' }).promise;
+    });
+  }).then(function (d) { if (!alive) { d.destroy(); return; } doc = d; return layout(); })
+    .catch(function (err) {
+      if (!alive) return;
+      pages.innerHTML = '<div class="card" style="margin:20px">' + esc(err.message || '台本を開けませんでした') + '<p><button class="btn quiet" data-raw>別の画面で開く</button></p></div>';
+      pages.querySelector('[data-raw]').onclick = function () { openBlob(blob, x.fileName); };
+    });
+}
 function kb(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; }
 function day(iso) { if (!iso) return ''; var d = new Date(iso); return (d.getMonth() + 1) + '/' + d.getDate(); }
+
+function logout() { store.del('admin'); store.del('adminCode'); clearReads(); go('/'); }
 
 /* ===================== 管理：台本棚 ===================== */
 function viewShelf(workId) {
   app.innerHTML = dayHead('台本棚', '<button class="btn ghost sm" id="logout">ログアウト</button>', 'shelf') +
     '<main class="wrap" id="shelf">' + loading() + '</main>';
-  document.getElementById('logout').onclick = function () { store.del('admin'); go('/'); };
-  Promise.all([api('desk'), api('shelf', {})]).then(function (r) { renderShelf(r[0], r[1], workId); })
+  document.getElementById('logout').onclick = logout;
+  cachedAll([['desk'], ['shelf', {}]], function (r) { renderShelf(r[0], r[1], workId); })
     .catch(function (e) { if (!onAuthError(e, 'admin')) { var m = document.getElementById('shelf'); if (m) m.innerHTML = '<div class="card">' + esc(e.message) + '</div>'; } });
 }
 function renderShelf(works, scripts, workId) {
@@ -836,8 +966,8 @@ function bookSheet(w, x, reload) {
     if (act === 'close') return close();
     if (act === 'open') {
       var bar = v.querySelector('.prog'); bar.hidden = false; b.disabled = true;
-      downloadScript(x, function (r) { bar.firstChild.style.width = Math.round(r * 100) + '%'; }).then(function (blob) {
-        b.disabled = false; bar.hidden = true; openBlob(blob, x.fileName);
+      scriptBlob(x, function (r) { bar.firstChild.style.width = Math.round(r * 100) + '%'; }).then(function (blob) {
+        b.disabled = false; bar.hidden = true; close(); viewPdf(blob, x);
       }).catch(function (err) { b.disabled = false; bar.hidden = true; if (!onAuthError(err, 'admin')) toast(err.message); });
       return;
     }
@@ -1028,7 +1158,14 @@ function route() {
   document.querySelectorAll('.veil').forEach(function (v) { v.remove(); });
   if (parts[0] === 'admin') {
     document.body.className = 'day';
-    if (!store.get('admin', '')) return viewAdminLogin();
+    if (!store.get('admin', '')) {
+      var code = store.get('adminCode', '');
+      if (!code) return viewAdminLogin();
+      app.innerHTML = loading();
+      api('adminLogin', { code: code }).then(function (r) { store.set('admin', r.token); route(); })
+        .catch(function (e) { if (e.code !== 'network') store.del('adminCode'); viewAdminLogin(); });
+      return;
+    }
     if (parts[1] === 'w') return viewAdminWork(parts[2] || 'new');
     if (parts[1] === 'shelf') return viewShelf(parts[2] || '');
     return viewDesk();

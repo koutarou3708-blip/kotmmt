@@ -1,6 +1,6 @@
 /* もしょこむ楽屋：画面の部品を端末に保存し、電波がなくても開けるようにする。
    画面を更新したら VERSION の数字を1つ上げてください。 */
-const VERSION = 'gakuya-v0.2.9';
+const VERSION = 'gakuya-v0.2.10';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/logo.png'];
 
@@ -8,14 +8,14 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION).map(k => caches.delete(k))))
+  e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'gakuya-files').map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;                       /* GASとのやりとりは保存しない */
   const url = new URL(req.url);
-  const isFont = /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname);
+  const isFont = /fonts\.(googleapis|gstatic)\.com$|cdn\.jsdelivr\.net$/.test(url.hostname);
   if (url.origin !== location.origin && !isFont) return;
   /* config.js はいつも最新を取りにいく（電波がないときだけ保存分） */
   if (url.origin === location.origin && /config\.js$/.test(url.pathname)) {
