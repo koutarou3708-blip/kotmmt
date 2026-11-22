@@ -504,3 +504,60 @@ body.noscroll{overflow:hidden}
 .vw-page>span{color:#bbb;font-size:13px}
 .vw-page canvas{display:block;width:100%;height:auto}
 .vw-pages .loading{margin:auto}
+
+/* v0.3：配役・割り振り・録音・聞き流す */
+.flabel{display:block;font-weight:700;font-size:14px;margin-bottom:6px}
+.rolepick{display:flex;flex-wrap:wrap;gap:8px}
+.rchip{min-height:40px;padding:0 14px;border-radius:999px;border:var(--ol);background:#fff;color:var(--ink);font:700 14px/1 var(--f-body);cursor:pointer}
+.rchip.on{background:var(--yellow);box-shadow:2px 2px 0 var(--ink)}
+.freeroles{background:#FFF3C9;border:2px dashed var(--ink);border-radius:10px;padding:8px 12px}
+.btn.danger{color:var(--salmon-deep)}
+.editactor{grid-column:1/-1}
+.stepbtn{display:flex;flex-direction:column;gap:4px;text-decoration:none;color:var(--ink);border-style:solid!important;background:#fff;box-shadow:4px 4px 0 var(--ink);transition:transform .12s}
+.stepbtn:active{transform:translate(2px,2px);box-shadow:2px 2px 0 var(--ink)}
+.stepbtn .no{margin-bottom:0}
+.step-ico{display:block;width:64px;height:64px;margin:2px 0}
+.step-ico svg{width:100%;height:100%}
+.stepbtn .btn{align-self:flex-start;margin-top:auto}
+.pagetitle{font:400 18px/1.4 var(--f-pop);margin:0 0 12px}
+.aibox{background:#F3F0FF;border:var(--ol);border-radius:12px;padding:12px;margin-bottom:14px}
+.aibox .btn svg{width:28px;height:28px;vertical-align:middle;margin-right:6px}
+.aibox .note{margin:8px 0 0}
+.rolelist,.audiolist{display:grid;gap:8px;margin-top:12px}
+.rolerow,.aurow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 12px;border:var(--ol);border-radius:12px;background:#FFFBF3}
+.rolerow .rnote{flex:1;min-width:120px;font-size:13.5px;color:var(--ink-2)}
+.rolerow .acts,.aurow .acts{display:flex;gap:6px;margin-left:auto}
+.rolerow form{width:100%}
+.addrole{margin-top:16px;border-top:2px dashed var(--line);padding-top:16px}
+.au-ico{width:44px;height:44px;flex:none}
+.au-ico svg{width:100%;height:100%}
+.au-t{flex:1;min-width:0}
+.au-t b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.au-t small{color:var(--ink-2)}
+.aurow.pick{width:100%;text-align:left;font:inherit;color:var(--ink);cursor:pointer;box-shadow:4px 4px 0 var(--ink)}
+.h-ico{width:34px;height:34px;vertical-align:middle;margin-right:6px}
+#auprog{margin-top:12px}
+/* 劇団員の練習メニュー */
+.mode.mm-script{background:#FFB3C7}
+.mode.mm-learn{background:var(--yellow)}
+.mode.mm-listen{background:#5BC0EB}
+.mode.mm-drive{background:#7EE07E}
+.mode[aria-disabled=true]{filter:saturate(.75)}
+.modeprog{margin-top:4px}
+/* 聞き流す */
+.listenhead{position:relative;padding:calc(16px + env(safe-area-inset-top)) 16px 18px;background:var(--navy);color:#fff;border-bottom:var(--ol);text-align:center}
+.listenhead h1{font:400 24px/1.3 var(--f-pop);margin:34px 0 4px}
+.listenhead p{margin:0;opacity:.85}
+.listenhead .back{position:absolute;left:12px;top:calc(12px + env(safe-area-inset-top))}
+.player{display:grid;gap:12px;margin-top:4px}
+.pl-t{font:400 18px/1.4 var(--f-pop)}
+.pl-seek{width:100%;accent-color:var(--salmon-deep);height:28px}
+.pl-time{display:flex;justify-content:space-between;font:700 14px/1 var(--f-body);color:var(--ink-2);margin-top:-6px}
+.pl-btns{display:grid;grid-template-columns:1fr 1.4fr 1fr;gap:8px}
+.pl-main{font-size:18px}
+.pl-speed{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.rolerow{flex-wrap:nowrap}
+.rolerow .rnote{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.rolerow .acts{flex:none}
+.rolerow:has(form){flex-wrap:wrap}
+.tatami-in>.note{background:#FFFDF6;border:var(--ol);border-radius:12px;padding:10px 14px;color:var(--ink)}

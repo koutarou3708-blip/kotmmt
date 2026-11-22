@@ -83,16 +83,18 @@ var ART = {
 };
 
 /* ===================== API ===================== */
-var ADMIN_ACTIONS = ['desk', 'saveWork', 'uploadPoster', 'cast', 'saveActor', 'reissueCode', 'setActorActive',
-  'shelf', 'saveScriptNote', 'setScriptStatus', 'startUpload', 'uploadChunk', 'downloadChunk'];
-var WRITES = ['saveWork', 'uploadPoster', 'saveActor', 'reissueCode', 'setActorActive', 'saveScriptNote', 'setScriptStatus', 'uploadChunk'];
+var ADMIN_ACTIONS = ['desk', 'saveWork', 'uploadPoster', 'cast', 'saveActor', 'reissueCode', 'setActorActive', 'deleteActor',
+  'shelf', 'saveScriptNote', 'setScriptStatus', 'startUpload', 'uploadChunk', 'downloadChunk',
+  'roles', 'saveRole', 'deleteRole', 'aiRoles', 'audios', 'saveAudioNote', 'deleteAudio', 'setAdminCode'];
+var WRITES = ['saveWork', 'uploadPoster', 'saveActor', 'reissueCode', 'setActorActive', 'deleteActor', 'saveScriptNote', 'setScriptStatus', 'uploadChunk',
+  'saveRole', 'deleteRole', 'aiRoles', 'saveAudioNote', 'deleteAudio'];
 function api(action, payload) {
   return rawApi(action, payload).then(function (d) {
     if (WRITES.indexOf(action) >= 0) clearReads();
     return d;
   }, function (e) {
     var code = store.get('adminCode', '');
-    if (e && e.code === 'auth' && code && ADMIN_ACTIONS.indexOf(action) >= 0) {
+    if (e && e.code === 'auth' && code && ADMIN_ACTIONS.indexOf(action) >= 0 && !(payload && payload.asMember)) {
       /* 管理者の入館証が切れたら、覚えているコードで入り直す */
       return rawApi('adminLogin', { code: code }).then(function (r) {
         store.set('admin', r.token); return api(action, payload);
@@ -123,8 +125,8 @@ function cachedAll(list, show) {
 function prefetch(list) { cachedAll(list, function () { }).catch(function () { }); }
 function rawApi(action, payload) {
   payload = payload || {};
-  var token = ADMIN_ACTIONS.indexOf(action) >= 0 ? store.get('admin', '') :
-    action === 'me' ? (store.get('passes', {})[payload.workId] || '') : '';
+  var token = (action === 'me' || payload.asMember) ? (store.get('passes', {})[payload.workId] || '') :
+    ADMIN_ACTIONS.indexOf(action) >= 0 ? store.get('admin', '') : '';
   return new Promise(function (resolve, reject) {
     var done = function (r) { r && r.ok ? resolve(r.data) : reject(r || { code: 'error', message: '問題が起きました' }); };
     var fail = function () { reject({ code: 'network', message: '通信できませんでした。電波のよい場所でもう一度試してください' }); };
@@ -512,10 +514,12 @@ function viewHome(id) {
 }
 function renderHome(r) {
   var w = r.work, a = r.actor;
+  var hasScript = !!r.script, hasAudio = !!(r.audios && r.audios.length);
   var modes = [
-    ['覚える', '自分の番で止まります。言えたか自動で確かめます', ART.mirror],
-    ['聞き流す', '読み合わせの録音を通しで流します', ART.lamp],
-    ['運転中', '画面を見ずに、声だけで練習します', ART.go]
+    ['script', '台本を見る', hasScript ? r.script.label + '（確定版）を開きます' : '確定版の台本が届くと開けます', TOYS.list.script[2], hasScript ? '' : '台本待ち'],
+    ['learn', '覚える', '自分の番で止まります。言えたか自動で確かめます', ART.mirror, '準備中'],
+    ['listen', '聞き流す', hasAudio ? '読み合わせの録音（' + r.audios.length + '件）を流します' : '読み合わせの録音が届くと使えます', ART.lamp, hasAudio ? '' : '録音待ち'],
+    ['drive', '運転中', '画面を見ずに、声だけで練習します', ART.go, '準備中']
   ];
   document.body.className = 'room-theme';
   document.body.style.setProperty('--tile', PROPS_TILE);
@@ -524,24 +528,133 @@ function renderHome(r) {
     '<div class="sign"><small>劇団員楽屋</small><h1>' + esc(w.title) + '</h1><span class="meta">' + esc(dateLine(w)) + (w.venue ? '・' + esc(w.venue) : '') + '</span></div>' +
     '</header><main class="wrap tatami-in">' +
     '<div class="tapes"><span>あなたの役</span>' + (a.roles.length ? a.roles.map(tape).join('') : '<span>（未定）</span>') + '</div>' +
-    '<div class="say hello">' + ART.sheep('happy') + '<div class="bubble">' + esc(a.name) + 'さん、楽屋へようこそ。台本が届いたら、ここから稽古できるよ</div></div>' +
+    '<div class="say hello">' + ART.sheep('happy') + '<div class="bubble">' + esc(a.name) + 'さん、楽屋へようこそ。' + (hasScript ? '台本が届いているよ。さっそく開いてみよう' : '台本が届いたら、ここから稽古できるよ') + '</div></div>' +
     TOYS.row(['makeup', 'mirror', 'afro', 'fan', 'mic', 'towel']) +
-    '<div class="modes">' + modes.map(function (m, i) {
-      return '<button class="mode m' + i + '" aria-disabled="true" data-mode="' + m[0] + '"><span class="m-ico">' + m[2] + '</span><span><b>' + m[0] + '</b><small>' + m[1] + '</small></span><span class="soon">準備中</span></button>';
-    }).join('') + '</div>' +
+    '<div class="modes">' + modes.map(function (m) {
+      return '<button class="mode mm-' + m[0] + '"' + (m[4] ? ' aria-disabled="true"' : '') + ' data-mode="' + m[0] + '"><span class="m-ico">' + (m[3].indexOf('class=') < 0 ? m[3].replace('<svg', '<svg class="ico"') : m[3]) + '</span><span><b>' + m[1] + '</b><small>' + esc(m[2]) + '</small></span>' + (m[4] ? '<span class="soon">' + m[4] + '</span>' : '') + '</button>';
+    }).join('') + '<div class="prog modeprog" hidden><i></i></div></div>' +
     '<h2 class="sec-t">楽屋花</h2><div class="flowers">' + [0, 1, 2, 3].map(ART.vase).join('') +
     '<p>場ごとに覚え具合の花が咲きます。全部の場が満開になったら、千秋楽の準備はばっちり。</p></div>' +
     TOYS.row(['script', 'nosegl', 'castanet', 'tape', 'bottle']) +
     '<p class="foot"><button class="btn quiet sm" id="dropPass">この入館パスを外す</button></p></main>';
   bindToys(app.querySelector('.tatami-in'));
   app.querySelector('.modes').onclick = function (e) {
-    if (e.target.closest('.mode')) toast('台本が登録されると使えるようになります');
+    var b = e.target.closest('.mode'); if (!b) return;
+    var m = b.dataset.mode;
+    if (m === 'learn' || m === 'drive') { toast('セリフの割り振りができると使えます。いま舞台監督が準備しています'); return; }
+    if (m === 'listen') { if (hasAudio) go('/w/' + w.id + '/listen'); else toast('読み合わせの録音が届くと使えます'); return; }
+    if (m === 'script') {
+      if (!hasScript) { toast('確定版の台本が届くと開けます'); return; }
+      var bar = app.querySelector('.modeprog'); bar.hidden = false; b.disabled = true;
+      var x = Object.assign({ workId: w.id }, r.script);
+      scriptBlob(x, function (p) { bar.firstChild.style.width = Math.round(p * 100) + '%'; }, 'script', true)
+        .then(function (blob) { bar.hidden = true; b.disabled = false; viewPdf(blob, x); })
+        .catch(function (err) { bar.hidden = true; b.disabled = false; toast(err.message || '台本を開けませんでした'); });
+    }
   };
   document.getElementById('dropPass').onclick = function () {
     var passes = store.get('passes', {}); delete passes[w.id]; store.set('passes', passes); store.del('me.' + w.id);
     toast('入館パスを外しました'); go('/');
   };
 }
+
+/* ===================== 聞き流す（録音の再生） ===================== */
+var player = { audio: null, url: '', cur: null, timer: null };
+function stopPlayer() {
+  if (player.audio) { player.audio.pause(); savePos(); }
+  clearInterval(player.timer);
+}
+function savePos() { if (player.cur && player.audio) store.set('pos.' + player.cur.id, Math.floor(player.audio.currentTime)); }
+function clock(t) { t = Math.max(0, Math.floor(t || 0)); var h = Math.floor(t / 3600), m = Math.floor(t % 3600 / 60), s2 = t % 60; return (h ? h + ':' + (m < 10 ? '0' : '') : '') + m + ':' + (s2 < 10 ? '0' : '') + s2; }
+function viewListen(id) {
+  if (!store.get('passes', {})[id]) { go('/'); return; }
+  var me = store.get('me.' + id, null);
+  document.body.className = 'room-theme'; document.body.style.setProperty('--tile', PROPS_TILE);
+  var draw = function (r) {
+    var list = r.audios || [];
+    app.innerHTML = '<header class="listenhead"><a class="back pill" href="#/w/' + esc(id) + '">← 楽屋へ</a><h1>' + ART.lamp.replace('<svg', '<svg class="h-ico"') + '聞き流す</h1><p>' + esc(r.work.title) + '</p></header>' +
+      '<main class="wrap tatami-in"><div class="player card" id="player"><p class="note pl-empty">聞く録音を選んでください</p></div>' +
+      '<h2 class="sec-t">録音</h2><div class="audiolist mine" id="lsList">' + list.map(function (x) {
+        var pos = store.get('pos.' + x.id, 0);
+        return '<button class="aurow pick" data-id="' + esc(x.id) + '"><span class="au-ico">' + TOYS.list.mic[2] + '</span><span class="au-t"><b>' + esc(x.label) + '</b><small>' + esc(kb(x.size)) + (pos ? '・続きは ' + clock(pos) + ' から' : '') + '</small></span></button>';
+      }).join('') + '</div>' +
+      '<p class="note" style="margin-top:14px">一度聞いた録音はこの端末に保存されるので、次からは電波がなくても聞けます。画面をロックしても流れ続けます。</p></main>';
+    document.getElementById('lsList').onclick = function (e) {
+      var b = e.target.closest('.aurow'); if (!b) return;
+      var x = list.filter(function (y) { return y.id === b.dataset.id; })[0];
+      loadTrack(Object.assign({ workId: id }, x), r.work);
+    };
+    if (player.cur && player.cur.workId === id && player.audio) drawPlayer(r.work);
+  };
+  if (me) draw(me); else app.innerHTML = loading();
+  api('me', { workId: id }).then(function (r) {
+    store.set('me.' + id, r);
+    if (!me || JSON.stringify(me.audios) !== JSON.stringify(r.audios)) draw(r);
+  }).catch(function (e) { if (!me) app.innerHTML = '<div class="empty">' + esc(e.message) + '</div>'; });
+}
+function loadTrack(x, work) {
+  var box = document.getElementById('player'); if (!box) return;
+  if (player.cur && player.cur.id === x.id && player.audio) { drawPlayer(work); return; }
+  stopPlayer();
+  box.innerHTML = '<b>' + esc(x.label) + '</b><p class="note">録音を準備しています…</p><div class="prog"><i></i></div>';
+  var bar = box.querySelector('.prog i');
+  scriptBlob(x, function (p) { bar.style.width = Math.round(p * 100) + '%'; }, 'audio', true).then(function (blob) {
+    if (player.url) URL.revokeObjectURL(player.url);
+    player.url = URL.createObjectURL(blob);
+    if (!player.audio) { player.audio = new Audio(); player.audio.preload = 'auto'; }
+    var au = player.audio;
+    au.src = player.url; au.playbackRate = store.get('speed', 1);
+    player.cur = x;
+    var pos = store.get('pos.' + x.id, 0);
+    au.onloadedmetadata = function () { if (pos && pos < au.duration - 5) au.currentTime = pos; tick(); };
+    au.onplay = au.onpause = function () { savePos(); tick(); };
+    au.onended = function () { store.del('pos.' + x.id); tick(); };
+    if ('mediaSession' in navigator) {
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({ title: x.label, artist: work.title, album: 'もしょこむ楽屋', artwork: [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }] });
+        navigator.mediaSession.setActionHandler('play', function () { au.play(); });
+        navigator.mediaSession.setActionHandler('pause', function () { au.pause(); });
+        navigator.mediaSession.setActionHandler('seekbackward', function () { au.currentTime = Math.max(0, au.currentTime - 10); });
+        navigator.mediaSession.setActionHandler('seekforward', function () { au.currentTime = Math.min(au.duration || 0, au.currentTime + 10); });
+      } catch (e) { }
+    }
+    drawPlayer(work);
+  }).catch(function (err) { box.innerHTML = '<p class="note">' + esc(err.message || '録音を開けませんでした') + '</p>'; });
+}
+function drawPlayer(work) {
+  var box = document.getElementById('player'), au = player.audio, x = player.cur; if (!box || !au || !x) return;
+  var sp = store.get('speed', 1);
+  box.innerHTML = '<b class="pl-t">' + esc(x.label) + '</b>' +
+    '<input type="range" class="pl-seek" min="0" max="1000" value="0" aria-label="再生位置"><div class="pl-time"><span id="plNow">0:00</span><span id="plAll">--:--</span></div>' +
+    '<div class="pl-btns"><button class="btn quiet" data-p="back">−10秒</button><button class="btn brand pl-main" data-p="play">▶ 再生</button><button class="btn quiet" data-p="fwd">＋10秒</button></div>' +
+    '<div class="pl-speed" role="group" aria-label="速さ">' + [0.75, 1, 1.25, 1.5, 2].map(function (v) {
+      return '<button class="rchip' + (v === sp ? ' on' : '') + '" data-sp="' + v + '">' + v + '倍</button>';
+    }).join('') + '</div>';
+  var seek = box.querySelector('.pl-seek'), dragging = false;
+  seek.oninput = function () { dragging = true; document.getElementById('plNow').textContent = clock(seek.value / 1000 * (au.duration || 0)); };
+  seek.onchange = function () { if (au.duration) au.currentTime = seek.value / 1000 * au.duration; dragging = false; };
+  box.onclick = function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.sp) {
+      var v = +b.dataset.sp; au.playbackRate = v; store.set('speed', v);
+      box.querySelectorAll('.pl-speed .rchip').forEach(function (c) { c.classList.toggle('on', +c.dataset.sp === v); }); return;
+    }
+    if (b.dataset.p === 'play') { if (au.paused) au.play().catch(function () { toast('再生できませんでした'); }); else au.pause(); }
+    if (b.dataset.p === 'back') au.currentTime = Math.max(0, au.currentTime - 10);
+    if (b.dataset.p === 'fwd') au.currentTime = Math.min(au.duration || 0, au.currentTime + 10);
+    tick();
+  };
+  player.tick = function () {
+    var n = document.getElementById('plNow'); if (!n) return;
+    if (!dragging) { n.textContent = clock(au.currentTime); seek.value = au.duration ? Math.round(au.currentTime / au.duration * 1000) : 0; }
+    document.getElementById('plAll').textContent = au.duration && isFinite(au.duration) ? clock(au.duration) : '--:--';
+    box.querySelector('.pl-main').textContent = au.paused ? '▶ 再生' : '❚❚ 一時停止';
+  };
+  clearInterval(player.timer);
+  player.timer = setInterval(function () { tick(); if (!au.paused && Math.floor(au.currentTime) % 5 === 0) savePos(); }, 500);
+  tick();
+}
+function tick() { if (player.tick) player.tick(); }
 
 /* 小道具の仕掛け：触るとプルッと動いて、ひと言しゃべる */
 var toyAudio = null, toysTouched = {};
@@ -599,7 +712,7 @@ function dayHead(title, right, tab) {
 function viewAdminLogin() {
   app.innerHTML = dayHead('舞台監督の入口', '<a class="btn ghost sm" href="#/">楽屋口へ</a>') +
     '<main class="wrap"><form class="card login" id="loginForm"><h2>管理者コード</h2>' +
-    '<p class="note" style="margin:0 0 12px">GASで setup を実行したときに出たコードです。</p>' +
+    '<p class="note" style="margin:0 0 12px">はじめての方は、配られた管理者コードを入れてください。入ったあと、これから使うコードを自分で決められます。</p>' +
     '<label class="sr" for="adminCode">管理者コード</label><input class="code-in" id="adminCode" maxlength="12" autocapitalize="characters" spellcheck="false" style="letter-spacing:.2em">' +
     '<div class="say">' + ART.sheep() + '<div class="bubble" id="loginSay">プロンプトデスクへようこそ</div></div>' +
     '<button class="btn brand wide" style="margin-top:12px">入る</button>' +
@@ -607,7 +720,10 @@ function viewAdminLogin() {
   document.getElementById('loginForm').onsubmit = function (e) {
     e.preventDefault();
     var code = document.getElementById('adminCode').value;
-    api('adminLogin', { code: code }).then(function (r) { store.set('admin', r.token); store.set('adminCode', code); prefetch([['desk'], ['shelf', {}]]); go('/admin'); })
+    api('adminLogin', { code: code }).then(function (r) {
+      store.set('admin', r.token); store.set('adminCode', code); prefetch([['desk'], ['shelf', {}]]);
+      if (r.mustSet) { store.set('adminMustSet', true); go('/admin/code'); } else { store.del('adminMustSet'); go('/admin'); }
+    })
       .catch(function (err) { document.getElementById('loginSay').textContent = err.message; });
   };
 }
@@ -618,7 +734,7 @@ function viewDesk() {
     '<main class="wrap"><div class="row" style="justify-content:space-between;margin-bottom:14px">' +
     '<p class="note" style="margin:0">作品ごとの状態です。ランプ：緑＝稽古中、黄＝準備中、灰＝終演</p>' +
     '<a class="btn main" href="#/admin/w/new">＋ 新しい作品</a></div><div class="desk" id="desk">' + loading() + '</div>' +
-    '<p class="note" style="margin-top:22px;text-align:center"><a href="check.html">この端末の動作チェック（マイク・聞き取りなど）</a></p></main>';
+    '<p class="note" style="margin-top:22px;text-align:center"><a href="#/admin/code">管理者コードを変える</a>　・　<a href="check.html">この端末の動作チェック</a></p></main>';
   document.getElementById('logout').onclick = logout;
   cachedAll([['desk']], function (r, old) {
     var works = r[0];
@@ -642,14 +758,15 @@ function viewAdminWork(id) {
   app.innerHTML = dayHead(isNew ? '新しい作品' : '作品の設定', '<a class="btn ghost sm" href="#/admin">← デスク</a>') + '<main class="wrap" id="aw">' + loading() + '</main>';
   if (isNew) { renderAdminWork(null, []); return; }
   var busy = function () { var m = document.getElementById('aw'); return m && m.contains(document.activeElement) && /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName); };
-  cachedAll([['desk'], ['cast', { workId: id }]], function (r, old) {
+  cachedAll([['desk'], ['cast', { workId: id }], ['roles', { workId: id }]], function (r, old) {
     var w = r[0].filter(function (x) { return x.id === id; })[0];
     if (!w) { if (!old) throw { code: 'notfound', message: 'この作品は見つかりません' }; return; }
     if (!old && busy()) return; /* 入力中は描き直さない */
-    renderAdminWork(w, r[1]);
+    renderAdminWork(w, r[1], r[2]);
   }).catch(function (e) { if (!onAuthError(e, 'admin')) document.getElementById('aw').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
 }
-function renderAdminWork(w, cast) {
+function renderAdminWork(w, cast, roles) {
+  roles = roles || [];
   w = w || { title: '', firstDate: '', lastDate: '', venue: '', status: 'prep', note: '' };
   var main = document.getElementById('aw');
   var opts = ['prep', 'rehearsal', 'closed', 'hidden'].map(function (s) {
@@ -664,7 +781,7 @@ function renderAdminWork(w, cast) {
     '<label class="f">状態<select class="in" name="status">' + opts + '</select><span>「非公開」は楽屋口に出ません</span></label></div>' +
     (w.id ? '<div class="posterpick"><span class="thumb" id="pthumb">' + posterArt(w, true) + '</span><div><label class="btn quiet">ポスター画像を選ぶ<input type="file" accept="image/*" id="pfile" class="sr"></label><p class="note">スマホで撮った写真でも大丈夫。自動で小さくしてから保存します。</p></div></div>' : '<p class="note">保存すると、ポスター画像と出演者を登録できます。</p>') +
     '<div class="row end"><button class="btn brand" id="saveWork">' + (w.id ? '変更を保存' : '作品を登録') + '</button></div></form>' +
-    (w.id ? castCard(w, cast) + stepsCard(w) : '');
+    (w.id ? stepsCard(w, roles) + castCard(w, cast, roles) : '');
   document.getElementById('workForm').onsubmit = function (e) {
     e.preventDefault();
     var f = e.target, v = function (n) { return f.elements.namedItem(n).value; };
@@ -676,6 +793,7 @@ function renderAdminWork(w, cast) {
     }).catch(function (err) { b.disabled = false; if (!onAuthError(err, 'admin')) toast(err.message); });
   };
   if (!w.id) return;
+  bindCast(w, cast, roles);
   if (w.hasPoster) loadPosters([w], function () { var t = document.getElementById('pthumb'); if (t) t.innerHTML = posterArt(w, true); });
   document.getElementById('pfile').onchange = function (e) {
     var file = e.target.files[0]; if (!file) return;
@@ -684,7 +802,6 @@ function renderAdminWork(w, cast) {
       .then(function () { document.getElementById('pthumb').innerHTML = posterArt(w, true); toast('ポスターを貼りました'); })
       .catch(function (err) { if (!onAuthError(err, 'admin')) toast(err.message || '画像を読み込めませんでした'); });
   };
-  bindCast(w, cast);
 }
 function shrink(file, max) {
   return new Promise(function (resolve, reject) {
@@ -701,16 +818,32 @@ function shrink(file, max) {
 }
 
 /* ---------- 出演者と入館パス ---------- */
-function castCard(w, cast) {
+function rolePicker(roles, picked, name) {
+  if (!roles.length) return '<input class="in" name="' + name + '" value="' + esc(picked.join('、')) + '" placeholder="ソラ、通行人A"><span>②で登場人物を登録すると、ここで選べるようになります</span>';
+  return '<div class="rolepick" data-name="' + name + '">' + roles.map(function (r) {
+    var on = picked.indexOf(r.name) >= 0;
+    return '<button type="button" class="rchip' + (on ? ' on' : '') + '" aria-pressed="' + on + '" data-role="' + esc(r.name) + '">' + esc(r.name) + '</button>';
+  }).join('') + '</div>';
+}
+function pickedRoles(root, name) {
+  var box = root.querySelector('.rolepick[data-name="' + name + '"]');
+  if (box) return Array.prototype.map.call(box.querySelectorAll('.rchip.on'), function (b) { return b.dataset.role; });
+  var inp = root.querySelector('[name="' + name + '"]');
+  return inp ? inp.value.split(/[、,，]/).map(function (x) { return x.trim(); }).filter(Boolean) : [];
+}
+function castCard(w, cast, roles) {
+  var taken = {}; cast.forEach(function (a) { if (a.active) a.roles.forEach(function (n) { taken[n] = 1; }); });
+  var free = roles.filter(function (r) { return !taken[r.name]; });
   return '<section class="card" id="castCard"><h2>出演者と入館パス</h2>' +
     '<p class="note" style="margin:-4px 0 12px">役者ごとにコードを発行します。ほかの公演に同じ名前の人がいれば、同じコードになります（劇団員が覚えるコードは1つで済みます）。</p>' +
-    '<div class="cast" id="castList">' + castRows(cast) + '</div>' +
+    (free.length ? '<p class="note freeroles">まだ配役していない役：' + free.map(function (r) { return esc(r.name); }).join('、') + '</p>' : '') +
+    '<div class="cast" id="castList">' + castRows(cast, roles) + '</div>' +
     '<form class="form" id="addActor" style="margin-top:16px;border-top:2px dashed var(--line);padding-top:16px">' +
-    '<div class="two"><label class="f">役者の名前<input class="in" name="name" placeholder="山田 太郎" required></label>' +
-    '<label class="f">役<input class="in" name="roles" placeholder="ソラ、通行人A"><span>読点（、）で区切ると複数の役になります</span></label></div>' +
+    '<label class="f">役者の名前<input class="in" name="name" placeholder="山田 太郎" required></label>' +
+    '<div class="f"><span class="flabel">役</span>' + rolePicker(roles, [], 'roles') + '</div>' +
     '<div class="row end"><button class="btn main">＋ 出演者を追加</button></div></form></section>';
 }
-function castRows(cast) {
+function castRows(cast, roles) {
   if (!cast.length) return '<p class="note">まだ出演者がいません。下から追加してください。</p>';
   return cast.map(function (a) {
     return '<div class="castrow' + (a.active ? '' : ' off') + '" data-id="' + esc(a.id) + '">' +
@@ -718,34 +851,62 @@ function castRows(cast) {
       '<div class="seen">' + (a.active ? (a.lastSeenAt ? '入館済み（' + esc(a.lastSeenAt.slice(0, 10)) + '）' : 'まだ入館していません') : 'このパスは無効です') + '</div></div>' +
       '<div class="codebox" aria-label="入館コード">' + esc(a.code.slice(0, 3) + ' ' + a.code.slice(3)) + '</div>' +
       '<div class="acts"><button class="btn quiet sm" data-act="copy">コードをコピー</button>' +
+      '<button class="btn quiet sm" data-act="edit">名前と役を直す</button>' +
       '<button class="btn quiet sm" data-act="reissue">コードを作り直す</button>' +
-      '<button class="btn quiet sm" data-act="toggle">' + (a.active ? '無効にする' : '有効に戻す') + '</button></div></div>';
+      '<button class="btn quiet sm" data-act="toggle">' + (a.active ? '無効にする' : '有効に戻す') + '</button>' +
+      '<button class="btn quiet sm danger" data-act="delete">削除</button></div></div>';
   }).join('');
 }
-function bindCast(w, cast) {
+function bindCast(w, cast, roles) {
   var byId = function (id) { return cast.filter(function (a) { return a.id === id; })[0]; };
-  var redraw = function () { document.getElementById('castList').innerHTML = castRows(cast); };
+  var list = document.getElementById('castList');
+  var redraw = function () { list.innerHTML = castRows(cast, roles); };
   var replace = function (na) { cast = cast.map(function (a) { return a.id === na.id ? na : a; }); redraw(); };
-  document.getElementById('castList').onclick = function (e) {
+  var card = document.getElementById('castCard');
+  card.addEventListener('click', function (e) {
+    var c = e.target.closest('.rchip'); if (!c) return;
+    c.classList.toggle('on'); c.setAttribute('aria-pressed', c.classList.contains('on'));
+  });
+  list.onclick = function (e) {
     var b = e.target.closest('button[data-act]'); if (!b) return;
-    var a = byId(b.closest('.castrow').dataset.id), act = b.dataset.act;
-    if (act === 'copy') {
-      copyText(a.code); return;
+    var rowEl = b.closest('.castrow'), a = byId(rowEl.dataset.id), act = b.dataset.act;
+    if (act === 'copy') { copyText(a.code); return; }
+    if (act === 'edit') {
+      rowEl.innerHTML = '<form class="form editactor"><label class="f">役者の名前<input class="in" name="ename" value="' + esc(a.name) + '" required></label>' +
+        '<div class="f"><span class="flabel">役</span>' + rolePicker(roles, a.roles, 'eroles') + '</div>' +
+        '<div class="row end"><button type="button" class="btn quiet sm" data-act="cancel">やめる</button><button class="btn main sm">保存</button></div></form>';
+      var f = rowEl.querySelector('form');
+      f.onsubmit = function (ev) {
+        ev.preventDefault();
+        api('saveActor', { actor: { id: a.id, workId: w.id, name: f.elements.namedItem('ename').value, roles: pickedRoles(f, 'eroles') } })
+          .then(function (na) { replace(na); toast('保存しました'); })
+          .catch(function (err) { if (!onAuthError(err, 'admin')) toast(err.message); });
+      };
+      return;
     }
-    if ((act === 'reissue' || (act === 'toggle' && a.active)) && b.dataset.sure !== '1') {
+    if (act === 'cancel') { redraw(); return; }
+    if ((act === 'reissue' || act === 'delete' || (act === 'toggle' && a.active)) && b.dataset.sure !== '1') {
       b.dataset.sure = '1'; var old = b.textContent; b.textContent = '本当に？もう一度押す';
       setTimeout(function () { if (b.isConnected) { b.dataset.sure = ''; b.textContent = old; } }, 3500); return;
     }
     b.disabled = true;
+    if (act === 'delete') {
+      api('deleteActor', { actorId: a.id }).then(function () {
+        cast = cast.filter(function (x) { return x.id !== a.id; }); redraw(); toast(a.name + 'さんを削除しました');
+      }).catch(function (err) { b.disabled = false; if (!onAuthError(err, 'admin')) toast(err.message); });
+      return;
+    }
     (act === 'reissue' ? api('reissueCode', { actorId: a.id }) : api('setActorActive', { actorId: a.id, active: !a.active }))
       .then(function (na) { replace(na); toast(act === 'reissue' ? '新しいコードにしました。古いコードは使えません' : na.active ? '有効に戻しました' : '無効にしました'); })
       .catch(function (err) { b.disabled = false; if (!onAuthError(err, 'admin')) toast(err.message); });
   };
   document.getElementById('addActor').onsubmit = function (e) {
     e.preventDefault();
-    var f = e.target, nameIn = f.elements.namedItem('name'), rolesIn = f.elements.namedItem('roles');
-    api('saveActor', { actor: { workId: w.id, name: nameIn.value, roles: rolesIn.value } }).then(function (na) {
-      cast.push(na); redraw(); f.reset(); nameIn.focus(); toast(na.name + 'さんの入館パスを作りました');
+    var f = e.target, nameIn = f.elements.namedItem('name');
+    api('saveActor', { actor: { workId: w.id, name: nameIn.value, roles: pickedRoles(f, 'roles') } }).then(function (na) {
+      cast.push(na); redraw(); f.reset();
+      f.querySelectorAll('.rchip.on').forEach(function (c) { c.classList.remove('on'); c.setAttribute('aria-pressed', 'false'); });
+      nameIn.focus(); toast(na.name + 'さんの入館パスを作りました');
     }).catch(function (err) { if (!onAuthError(err, 'admin')) toast(err.message); });
   };
 }
@@ -759,11 +920,197 @@ function copyText(text) {
   };
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(ok, fallback); else fallback();
 }
-function stepsCard(w) {
-  var s = [['台本を登録', '台本PDFを入れます。新しい版は前の版との違いだけ設定し直せます'], ['割り振りを確認', 'AIが分けた役を、台本を追いながら確認します'], ['録音を登録', '役ごとの録音や読み合わせ全体の録音を入れます（なくても大丈夫）']];
+function stepsCard(w, roles) {
+  var s = [
+    ['台本を登録', w.finalLabel ? '確定版：' + w.finalLabel + (w.draftCount ? '（下書き ' + w.draftCount + '）' : '') : (w.draftCount ? '下書き ' + w.draftCount + '冊。確定版にすると練習に使えます' : 'まだ台本がありません'), TOYS.list.script[2], '#/admin/shelf/' + w.id, '台本棚へ'],
+    ['割り振りを登録', roles.length ? '登場人物 ' + roles.length + '人' : 'AIが台本から登場人物を読み取ります', TOYS.list.script[2], '#/admin/roles/' + w.id, '割り振りへ'],
+    ['録音を登録', w.audioCount ? '録音 ' + w.audioCount + '件' : '読み合わせの録音を入れます（なくても大丈夫）', TOYS.list.mic[2], '#/admin/audio/' + w.id, '録音へ']
+  ];
   return '<section class="card"><h2>稽古の準備</h2><div class="steps">' + s.map(function (x, i) {
-    return '<div class="step"><span class="no">' + (i + 1) + '</span><b>' + x[0] + '</b><small>' + x[1] + '</small>' + (i === 0 ? '<a class="btn quiet sm" style="margin-top:8px" href="#/admin/shelf/' + esc(w.id) + '">台本棚へ</a>' : '<p class="note">次の段階で使えるようになります</p>') + '</div>';
+    return '<a class="step stepbtn" href="' + esc(x[3]) + '"><span class="no">' + (i + 1) + '</span><span class="step-ico">' + x[2] + '</span><b>' + x[0] + '</b><small>' + esc(x[1]) + '</small><span class="btn quiet sm">' + x[4] + ' →</span></a>';
   }).join('') + '</div></section>';
+}
+
+/* ===================== 管理：割り振り（登場人物） ===================== */
+function viewRoles(workId) {
+  app.innerHTML = dayHead('割り振り', '<a class="btn ghost sm" href="#/admin/w/' + esc(workId) + '">← 作品</a>') + '<main class="wrap" id="rl">' + loading() + '</main>';
+  cachedAll([['desk'], ['roles', { workId: workId }], ['shelf', { workId: workId }]], function (r) {
+    var w = r[0].filter(function (x) { return x.id === workId; })[0];
+    if (!w) throw { code: 'notfound', message: 'この作品は見つかりません' };
+    renderRoles(w, r[1], r[2]);
+  }).catch(function (e) { if (!onAuthError(e, 'admin')) { var m = document.getElementById('rl'); if (m) m.innerHTML = '<div class="card">' + esc(e.message) + '</div>'; } });
+}
+function renderRoles(w, roles, scripts) {
+  var main = document.getElementById('rl'); if (!main) return;
+  var src = scripts.filter(function (x) { return x.status === 'final'; })[0] || scripts.filter(function (x) { return x.status === 'draft'; }).sort(function (a, b) { return b.version - a.version; })[0];
+  main.innerHTML = '<h2 class="pagetitle">' + esc(w.title) + '</h2>' +
+    '<section class="card"><h2>登場人物</h2>' +
+    '<p class="note" style="margin:-4px 0 12px">ここで登録した役が、出演者の配役で選べるようになります。名前を直すと、配役も一緒に直ります。</p>' +
+    (src ? '<div class="aibox"><button class="btn brand" id="aiRead">' + ART.sheep('happy') + '台本からAIで読み込む</button>' +
+      '<p class="note">「' + esc(src.label) + '」' + (src.status === 'final' ? '（確定版）' : '（下書き）') + 'を読みます。すでにある役は、そのまま残ります。</p><div class="prog" hidden><i></i></div></div>'
+      : '<p class="note">先に①で台本PDFを入れると、AIで登場人物を読み込めます。</p>') +
+    '<div class="rolelist" id="roleList">' + roleRows(roles) + '</div>' +
+    '<form class="form addrole" id="addRole"><div class="two"><label class="f">役の名前<input class="in" name="rname" required placeholder="ソラ"></label>' +
+    '<label class="f">メモ<input class="in" name="rnote" placeholder="高校2年生・ハルの幼なじみ"></label></div>' +
+    '<div class="row end"><button class="btn main">＋ 役を追加</button></div></form></section>' +
+    '<section class="card"><h2>セリフの割り振り</h2><p class="note">次の段階で、AIが台本のセリフを役ごとに分け、それを台本を追いながら確認・修正できるようにします。割り振りが終わると、劇団員の「覚える」「運転中」が使えるようになります。</p></section>';
+  var list = document.getElementById('roleList');
+  var redraw = function () { list.innerHTML = roleRows(roles); };
+  list.onclick = function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var rowEl = b.closest('.rolerow'), x = roles.filter(function (r) { return r.id === rowEl.dataset.id; })[0], act = b.dataset.act;
+    if (act === 'edit') {
+      rowEl.innerHTML = '<form class="form two"><input class="in" name="n" value="' + esc(x.name) + '" required aria-label="役の名前"><input class="in" name="m" value="' + esc(x.note) + '" aria-label="メモ">' +
+        '<div class="row end" style="grid-column:1/-1"><button type="button" class="btn quiet sm" data-act="cancel">やめる</button><button class="btn main sm">保存</button></div></form>';
+      var f = rowEl.querySelector('form'); f.elements.namedItem('n').focus();
+      f.onsubmit = function (ev) {
+        ev.preventDefault();
+        api('saveRole', { role: { id: x.id, workId: w.id, name: f.elements.namedItem('n').value, note: f.elements.namedItem('m').value } })
+          .then(function (nr) { roles = roles.map(function (r) { return r.id === nr.id ? nr : r; }); redraw(); toast('保存しました'); })
+          .catch(function (err) { if (!onAuthError(err, 'admin')) toast(err.message); });
+      };
+      return;
+    }
+    if (act === 'cancel') return redraw();
+    if (act === 'delete') {
+      if (b.dataset.sure !== '1') {
+        b.dataset.sure = '1'; b.textContent = '本当に？もう一度';
+        setTimeout(function () { if (b.isConnected) { b.dataset.sure = ''; b.textContent = '削除'; } }, 3500); return;
+      }
+      b.disabled = true;
+      api('deleteRole', { roleId: x.id }).then(function () { roles = roles.filter(function (r) { return r.id !== x.id; }); redraw(); toast(x.name + 'を削除しました'); })
+        .catch(function (err) { b.disabled = false; if (!onAuthError(err, 'admin')) toast(err.message); });
+    }
+  };
+  document.getElementById('addRole').onsubmit = function (e) {
+    e.preventDefault(); var f = e.target;
+    api('saveRole', { role: { workId: w.id, name: f.elements.namedItem('rname').value, note: f.elements.namedItem('rnote').value } })
+      .then(function (nr) { roles.push(nr); redraw(); f.reset(); f.elements.namedItem('rname').focus(); })
+      .catch(function (err) { if (!onAuthError(err, 'admin')) toast(err.message); });
+  };
+  var ai = document.getElementById('aiRead');
+  if (ai) ai.onclick = function () {
+    var box = ai.parentNode, bar = box.querySelector('.prog'), say = box.querySelector('.note');
+    ai.disabled = true; bar.hidden = false; bar.firstChild.style.width = '5%';
+    say.textContent = '台本を開いています…';
+    scriptBlob(src, function (r) { bar.firstChild.style.width = Math.round(5 + r * 35) + '%'; })
+      .then(function (blob) { say.textContent = '台本の文字を読み取っています…'; return pdfText(blob, function (r) { bar.firstChild.style.width = Math.round(40 + r * 30) + '%'; }); })
+      .then(function (text) { say.textContent = 'AIが登場人物を探しています（30秒ほど）…'; bar.firstChild.style.width = '80%'; return api('aiRoles', { workId: w.id, text: text }); })
+      .then(function (r) {
+        roles = r.roles; redraw(); bar.hidden = true; ai.disabled = false;
+        say.textContent = r.added ? r.added + '人の登場人物を見つけました。違うところは直したり削除したりしてください。' : '新しい登場人物は見つかりませんでした。';
+      })
+      .catch(function (err) {
+        bar.hidden = true; ai.disabled = false;
+        if (onAuthError(err, 'admin')) return;
+        say.textContent = err.code === 'nokey' ? 'AIを使うには、GASのスクリプト プロパティに GEMINI_KEY（Gemini APIキー）を入れてください。' : (err.message || '読み込めませんでした');
+      });
+  };
+}
+function roleRows(roles) {
+  if (!roles.length) return '<p class="note">まだ登場人物がいません。</p>';
+  return roles.map(function (r) {
+    return '<div class="rolerow" data-id="' + esc(r.id) + '">' + tape(r.name) + '<span class="rnote">' + esc(r.note) + '</span>' +
+      '<span class="acts"><button class="btn quiet sm" data-act="edit">直す</button><button class="btn quiet sm danger" data-act="delete">削除</button></span></div>';
+  }).join('');
+}
+/* PDFから文字を取り出す（縦書きでも、ページごとに上から順に） */
+function pdfText(blob, onProgress) {
+  return loadPdfJs().then(function (lib) {
+    return blob.arrayBuffer().then(function (buf) {
+      return lib.getDocument({ data: new Uint8Array(buf), cMapUrl: PDFJS + 'cmaps/', cMapPacked: true, standardFontDataUrl: PDFJS + 'standard_fonts/' }).promise;
+    });
+  }).then(function (doc) {
+    var out = [], i = 0;
+    var next = function () {
+      i++; if (i > doc.numPages) { doc.destroy(); return out.join('\n\n'); }
+      return doc.getPage(i).then(function (pg) { return pg.getTextContent(); }).then(function (tc) {
+        out.push(tc.items.map(function (it) { return it.str + (it.hasEOL ? '\n' : ''); }).join(''));
+        if (onProgress) onProgress(i / doc.numPages);
+        return next();
+      });
+    };
+    return next();
+  });
+}
+
+/* ===================== 管理：録音 ===================== */
+function viewAudio(workId) {
+  app.innerHTML = dayHead('録音', '<a class="btn ghost sm" href="#/admin/w/' + esc(workId) + '">← 作品</a>') + '<main class="wrap" id="au">' + loading() + '</main>';
+  cachedAll([['desk'], ['audios', { workId: workId }]], function (r) {
+    var w = r[0].filter(function (x) { return x.id === workId; })[0];
+    if (!w) throw { code: 'notfound', message: 'この作品は見つかりません' };
+    renderAudio(w, r[1]);
+  }).catch(function (e) { if (!onAuthError(e, 'admin')) { var m = document.getElementById('au'); if (m) m.innerHTML = '<div class="card">' + esc(e.message) + '</div>'; } });
+}
+function renderAudio(w, list) {
+  var main = document.getElementById('au'); if (!main) return;
+  main.innerHTML = '<h2 class="pagetitle">' + esc(w.title) + '</h2>' +
+    '<section class="card"><h2>' + TOYS.list.mic[2].replace('<svg', '<svg class="h-ico"') + '読み合わせの録音</h2>' +
+    '<p class="note" style="margin:-4px 0 12px">ここに入れた録音を、劇団員が「聞き流す」で再生できます。1時間を超える録音も大丈夫です（300MBまで）。<br>iPhoneのボイスメモ（.m4a）やMP3をそのまま入れられます。</p>' +
+    '<label class="btn brand">＋ 録音ファイルを入れる<input type="file" accept="audio/*,.m4a,.mp3,.wav,.aac" class="sr" id="aufile"></label>' +
+    '<div class="prog" id="auprog" hidden><i></i></div>' +
+    '<div class="audiolist" id="auList">' + audioRows(list) + '</div></section>';
+  var box = document.getElementById('auList');
+  var redraw = function () { box.innerHTML = audioRows(list); };
+  document.getElementById('aufile').onchange = function (e) {
+    var file = e.target.files[0]; e.target.value = ''; if (!file) return;
+    var bar = document.getElementById('auprog'); bar.hidden = false; bar.firstChild.style.width = '0%';
+    var mime = file.type || (/\.mp3$/i.test(file.name) ? 'audio/mpeg' : /\.wav$/i.test(file.name) ? 'audio/wav' : 'audio/mp4');
+    toast('録音を送っています。画面を閉じずにお待ちください');
+    uploadFile(file, { workId: w.id, kind: 'audio', mime: mime }, function (r) { bar.firstChild.style.width = Math.round(r * 100) + '%'; })
+      .then(function (r) { bar.hidden = true; if (r.audio) list.push(r.audio); redraw(); toast('録音を入れました'); })
+      .catch(function (err) { bar.hidden = true; if (!onAuthError(err, 'admin')) toast(err.message); });
+  };
+  box.onclick = function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var rowEl = b.closest('.aurow'), x = list.filter(function (y) { return y.id === rowEl.dataset.id; })[0], act = b.dataset.act;
+    if (act === 'rename') {
+      var nl = prompt('録音の名前', x.label); if (nl === null) return;
+      api('saveAudioNote', { audioId: x.id, label: nl }).then(function (nx) { list = list.map(function (y) { return y.id === nx.id ? nx : y; }); redraw(); })
+        .catch(function (err) { if (!onAuthError(err, 'admin')) toast(err.message); });
+      return;
+    }
+    if (act === 'delete') {
+      if (b.dataset.sure !== '1') {
+        b.dataset.sure = '1'; b.textContent = '本当に？もう一度';
+        setTimeout(function () { if (b.isConnected) { b.dataset.sure = ''; b.textContent = '削除'; } }, 3500); return;
+      }
+      b.disabled = true;
+      api('deleteAudio', { audioId: x.id }).then(function () { list = list.filter(function (y) { return y.id !== x.id; }); redraw(); toast('削除しました'); })
+        .catch(function (err) { b.disabled = false; if (!onAuthError(err, 'admin')) toast(err.message); });
+    }
+  };
+}
+function audioRows(list) {
+  if (!list.length) return '<p class="note" style="margin-top:14px">まだ録音がありません。</p>';
+  return list.map(function (x) {
+    return '<div class="aurow" data-id="' + esc(x.id) + '"><span class="au-ico">' + TOYS.list.mic[2] + '</span><span class="au-t"><b>' + esc(x.label) + '</b><small>' + esc(kb(x.size)) + '・' + esc(day(x.createdAt)) + '</small></span>' +
+      '<span class="acts"><button class="btn quiet sm" data-act="rename">名前</button><button class="btn quiet sm danger" data-act="delete">削除</button></span></div>';
+  }).join('');
+}
+
+/* ===================== 管理：管理者コードを決める ===================== */
+function viewAdminCode() {
+  var first = store.get('adminMustSet', false);
+  app.innerHTML = dayHead(first ? 'はじめまして' : '管理者コード', first ? '' : '<a class="btn ghost sm" href="#/admin">← デスク</a>') +
+    '<main class="wrap"><form class="card login" id="codeForm"><h2>' + (first ? 'これから使う管理者コードを決めてください' : '新しい管理者コード') + '</h2>' +
+    '<p class="note" style="margin:0 0 12px">6文字以上の英数字。ほかの管理者にも、このコードを伝えてください。前のコードは使えなくなります。</p>' +
+    '<label class="sr" for="nc1">新しいコード</label><input class="code-in" id="nc1" maxlength="20" autocapitalize="characters" spellcheck="false" autocomplete="off" style="letter-spacing:.15em" placeholder="新しいコード">' +
+    '<label class="sr" for="nc2">もう一度</label><input class="code-in" id="nc2" maxlength="20" autocapitalize="characters" spellcheck="false" autocomplete="off" style="letter-spacing:.15em;margin-top:10px" placeholder="もう一度">' +
+    '<div class="say">' + ART.sheep() + '<div class="bubble" id="codeSay">英字の大文字・小文字は区別しません</div></div>' +
+    '<button class="btn brand wide" style="margin-top:12px">このコードにする</button></form></main>';
+  document.getElementById('codeForm').onsubmit = function (e) {
+    e.preventDefault();
+    var a = document.getElementById('nc1').value, b = document.getElementById('nc2').value, say = document.getElementById('codeSay');
+    var norm = function (v) { return String(v).toUpperCase().replace(/[^A-Z0-9]/g, ''); };
+    if (norm(a).length < 6) { say.textContent = '6文字以上の英数字にしてください'; return; }
+    if (norm(a) !== norm(b)) { say.textContent = '2回の入力が違います'; return; }
+    api('setAdminCode', { code: a }).then(function (r) {
+      store.set('admin', r.token); store.set('adminCode', r.code); store.del('adminMustSet');
+      toast('管理者コードを「' + r.code + '」にしました'); go('/admin');
+    }).catch(function (err) { if (!onAuthError(err, 'admin')) say.textContent = err.message; });
+  };
 }
 
 /* ===================== 大きなファイルの分割送受信 ===================== */
@@ -792,10 +1139,12 @@ function uploadFile(file, meta, onProgress) {
   });
 }
 function b64ToBytes(b64) { var bin = atob(b64), u = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
-function downloadScript(x, onProgress) {
+function downloadScript(x, onProgress, kind, member) {
   var parts = [], got = 0;
   var step = function (offset) {
-    return api('downloadChunk', { scriptId: x.id, offset: offset }).then(function (r) {
+    var q = kind === 'audio' ? { audioId: x.id, offset: offset } : { scriptId: x.id, offset: offset };
+    if (member) { q.asMember = true; q.workId = x.workId; }
+    return api('downloadChunk', q).then(function (r) {
       var b = b64ToBytes(r.data); parts.push(b); got += b.length;
       if (onProgress) onProgress(Math.min(1, got / (r.size || x.size)));
       return r.next === null ? new Blob(parts, { type: x.mime || 'application/pdf' }) : step(r.next);
@@ -805,11 +1154,12 @@ function downloadScript(x, onProgress) {
 }
 /* 台本は版ごとに中身が変わらないので、一度取ったら端末に置いておく */
 var FILES = 'gakuya-files';
-function scriptBlob(x, onProgress) {
-  var key = './__script/' + x.id;
+function scriptBlob(x, onProgress, kind, member) {
+  kind = kind || 'script';
+  var key = './__' + kind + '/' + x.id;
   var fromNet = function () {
-    return downloadScript(x, onProgress).then(function (blob) {
-      if (window.caches) caches.open(FILES).then(function (c) { return c.put(key, new Response(blob, { headers: { 'Content-Type': 'application/pdf' } })); }).catch(function () { });
+    return downloadScript(x, onProgress, kind, member).then(function (blob) {
+      if (window.caches) caches.open(FILES).then(function (c) { return c.put(key, new Response(blob, { headers: { 'Content-Type': x.mime || 'application/pdf' } })); }).catch(function () { });
       return blob;
     });
   };
@@ -1069,8 +1419,11 @@ var DEMO = {
     var rank = { rehearsal: 0, prep: 1, closed: 2, hidden: 3 };
     var sort = function (a, b) { return rank[a.status] - rank[b.status] || String(b.firstDate).localeCompare(String(a.firstDate)); };
     var adminOnly = ADMIN_ACTIONS;
-    db.scripts = db.scripts || [];
-    if (adminOnly.indexOf(action) >= 0 && !isAdmin) return ng('auth', 'もう一度、管理者コードを入れてください');
+    db.scripts = db.scripts || []; db.roles = db.roles || []; db.audios = db.audios || [];
+    var memberOf = function () { var t = String(token).split('.'), m = db.actors.filter(function (x) { return x.id === t[1]; })[0]; return m && m.code === t[2] && m.active ? m : null; };
+    if (adminOnly.indexOf(action) >= 0 && !isAdmin && !(action === 'downloadChunk' && memberOf())) return ng('auth', 'もう一度、管理者コードを入れてください');
+    var rolesOf = function (wid) { return db.roles.filter(function (x) { return x.workId === wid; }); };
+    var castRename = function (wid, from, to) { db.actors.forEach(function (a) { if (a.workId !== wid) return; var l = a.roles ? a.roles.split(',') : [], i = l.indexOf(from); if (i < 0) return; if (to) l[i] = to; else l.splice(i, 1); a.roles = l.join(','); }); };
     switch (action) {
       case 'listWorks': return ok(db.works.filter(function (w) { return w.status !== 'hidden'; }).map(pw).sort(sort));
       case 'poster': return ok(null);
@@ -1082,13 +1435,33 @@ var DEMO = {
       case 'me':
         var parts = String(token).split('.'), me = db.actors.filter(function (x) { return x.id === parts[1]; })[0];
         if (!me || me.code !== parts[2] || !me.active || me.workId !== p.workId) return ng('auth', '入館パスが変わりました。新しいコードを入れてください');
-        return ok({ actor: { id: me.id, name: me.name, roles: pa(me).roles }, work: pw(db.works.filter(function (w) { return w.id === me.workId; })[0]) });
-      case 'adminLogin': return norm(p.code) === 'DEMO2027' ? ok({ token: 'demo-admin' }) : ng('badcode', '管理者コードが違います');
+        var mf = db.scripts.filter(function (x) { return x.workId === me.workId && x.status === 'final'; })[0];
+        return ok({ actor: { id: me.id, name: me.name, roles: pa(me).roles }, work: pw(db.works.filter(function (w) { return w.id === me.workId; })[0]),
+          script: mf || null, audios: db.audios.filter(function (x) { return x.workId === me.workId; }) });
+      case 'adminLogin': return norm(p.code) === (db.adminCode || 'DEMO2027') ? ok({ token: 'demo-admin', mustSet: false }) : ng('badcode', '管理者コードが違います');
+      case 'setAdminCode': if (norm(p.code).length < 6) return ng('invalid', '6文字以上の英数字にしてください'); db.adminCode = norm(p.code); self.save(); return ok({ token: 'demo-admin', code: db.adminCode });
+      case 'deleteActor': db.actors = db.actors.filter(function (x) { return x.id !== p.actorId; }); self.save(); return ok({ deleted: p.actorId });
+      case 'roles': return ok(rolesOf(p.workId));
+      case 'saveRole':
+        var rn = String(p.role.name || '').trim(); if (!rn) return ng('invalid', '役の名前を入れてください');
+        if (p.role.id) { var cr = db.roles.filter(function (x) { return x.id === p.role.id; })[0]; if (cr.name !== rn) castRename(cr.workId, cr.name, rn); cr.name = rn; cr.note = String(p.role.note || ''); self.save(); return ok(cr); }
+        if (rolesOf(p.role.workId).some(function (x) { return x.name === rn; })) return ng('invalid', '同じ名前の役があります');
+        var nr = { id: 'r' + Date.now(), workId: p.role.workId, name: rn, note: String(p.role.note || ''), order: rolesOf(p.role.workId).length + 1 }; db.roles.push(nr); self.save(); return ok(nr);
+      case 'deleteRole': var dr = db.roles.filter(function (x) { return x.id === p.roleId; })[0]; castRename(dr.workId, dr.name, ''); db.roles = db.roles.filter(function (x) { return x !== dr; }); self.save(); return ok({ deleted: dr.id });
+      case 'aiRoles':
+        var seen = {}, added = 0;
+        String(p.text || '').replace(/([^\s「」（）()、。]{1,8})「/g, function (m0, nm) { seen[nm] = 1; });
+        Object.keys(seen).forEach(function (nm) { if (!rolesOf(p.workId).some(function (x) { return x.name === nm; })) { db.roles.push({ id: 'r' + Date.now() + added, workId: p.workId, name: nm, note: '（デモ）', order: rolesOf(p.workId).length + 1 }); added++; } });
+        self.save(); return ok({ added: added, roles: rolesOf(p.workId) });
+      case 'audios': return ok(db.audios.filter(function (x) { return x.workId === p.workId; }));
+      case 'saveAudioNote': var ax = db.audios.filter(function (x) { return x.id === p.audioId; })[0]; ax.label = String(p.label || '').trim() || ax.fileName; self.save(); return ok(ax);
+      case 'deleteAudio': db.audios = db.audios.filter(function (x) { return x.id !== p.audioId; }); delete self.files[p.audioId]; self.save(); return ok({ deleted: p.audioId });
       case 'desk': return ok(db.works.map(function (w) {
         var c = db.actors.filter(function (x) { return x.workId === w.id && x.active; }), o = pw(w);
         o.castCount = c.length; o.enteredCount = c.filter(function (x) { return x.lastSeenAt; }).length;
         var fin = db.scripts.filter(function (x) { return x.workId === w.id && x.status === 'final'; })[0];
         o.finalLabel = fin ? fin.label : ''; o.draftCount = db.scripts.filter(function (x) { return x.workId === w.id && x.status === 'draft'; }).length;
+        o.roleCount = rolesOf(w.id).length; o.audioCount = db.audios.filter(function (x) { return x.workId === w.id; }).length;
         return o;
       }).sort(sort));
       case 'saveWork':
@@ -1102,7 +1475,9 @@ var DEMO = {
         if (!String(p.actor.name || '').trim()) return ng('invalid', '役者の名前を入れてください');
         var same = db.actors.filter(function (x) { return x.name === p.actor.name.trim() && x.workId !== p.actor.workId && x.active; })[0];
         var usedHere = function (c) { return db.actors.some(function (x) { return x.workId === p.actor.workId && x.code === c; }); };
-        var na = { id: 'a' + Date.now(), workId: p.actor.workId, name: p.actor.name.trim(), roles: String(p.actor.roles || '').split(/[、,，]/).map(function (s) { return s.trim(); }).filter(Boolean).join(','), code: same && !usedHere(same.code) ? same.code : newCode(), active: true, lastSeenAt: '' };
+        var rl = (Array.isArray(p.actor.roles) ? p.actor.roles : String(p.actor.roles || '').split(/[、,，]/)).map(function (s) { return String(s).trim(); }).filter(Boolean).join(',');
+        if (p.actor.id) { var ea = db.actors.filter(function (x) { return x.id === p.actor.id; })[0]; ea.name = p.actor.name.trim(); ea.roles = rl; self.save(); return ok(pa(ea)); }
+        var na = { id: 'a' + Date.now(), workId: p.actor.workId, name: p.actor.name.trim(), roles: rl, code: same && !usedHere(same.code) ? same.code : newCode(), active: true, lastSeenAt: '' };
         db.actors.push(na); self.save(); return ok(pa(na));
       case 'reissueCode':
         var r = db.actors.filter(function (x) { return x.id === p.actorId; })[0]; r.code = newCode(); r.lastSeenAt = ''; self.save(); return ok(pa(r));
@@ -1121,12 +1496,16 @@ var DEMO = {
         var up = self.ups[p.uploadId], bytes = b64ToBytes(p.data); up.parts.push(bytes); up.got += bytes.length;
         if (up.got < up.meta.size) return ok({ done: false, received: up.got });
         var all = new Uint8Array(up.got), o2 = 0; up.parts.forEach(function (b) { all.set(b, o2); o2 += b.length; });
+        if (up.meta.kind === 'audio') {
+          var av = { id: 'v' + Date.now(), workId: up.meta.workId, label: up.meta.name.replace(/\.[^.]+$/, ''), fileName: up.meta.name, mime: up.meta.mime, size: up.meta.size, createdAt: new Date().toISOString(), note: '' };
+          self.files[av.id] = all; db.audios.push(av); delete self.ups[p.uploadId]; self.save(); return ok({ done: true, audio: av });
+        }
         var ver = db.scripts.filter(function (x) { return x.workId === up.meta.workId; }).reduce(function (m, x) { return Math.max(m, x.version); }, 0) + 1;
         var sc = { id: 's' + Date.now(), workId: up.meta.workId, version: ver, label: '第' + ver + '版', status: 'draft', fileName: up.meta.name, mime: up.meta.mime, size: up.meta.size, createdAt: new Date().toISOString(), confirmedAt: '', archivedAt: '', note: '' };
         self.files[sc.id] = all; db.scripts.push(sc); delete self.ups[p.uploadId]; self.save();
         return ok({ done: true, script: sc });
       case 'downloadChunk':
-        var fb = self.files[p.scriptId];
+        var fb = self.files[p.scriptId || p.audioId];
         if (!fb) return ng('notfound', 'デモでは、ページを読み込み直すとPDFの中身は消えます');
         var st = Number(p.offset) || 0, en = Math.min(st + 4 * 1024 * 1024, fb.length), bin = '';
         for (var k = st; k < en; k += 32768) bin += String.fromCharCode.apply(null, fb.subarray(k, Math.min(k + 32768, en)));
@@ -1157,6 +1536,7 @@ function route() {
   window.scrollTo(0, 0);
   document.querySelectorAll('.veil').forEach(function (v) { v.remove(); });
   if (parts[0] === 'admin') {
+    stopPlayer();
     document.body.className = 'day';
     if (!store.get('admin', '')) {
       var code = store.get('adminCode', '');
@@ -1168,9 +1548,14 @@ function route() {
     }
     if (parts[1] === 'w') return viewAdminWork(parts[2] || 'new');
     if (parts[1] === 'shelf') return viewShelf(parts[2] || '');
+    if (parts[1] === 'roles' && parts[2]) return viewRoles(parts[2]);
+    if (parts[1] === 'audio' && parts[2]) return viewAudio(parts[2]);
+    if (parts[1] === 'code' || store.get('adminMustSet', false)) return viewAdminCode();
     return viewDesk();
   }
   document.body.className = 'night';
+  if (!(parts[0] === 'w' && parts[2] === 'listen')) stopPlayer();
+  if (parts[0] === 'w' && parts[1] && parts[2] === 'listen') return viewListen(parts[1]);
   if (parts[0] === 'w' && parts[1]) return viewHome(parts[1]);
   return viewDoor();
 }
