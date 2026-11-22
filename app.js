@@ -576,7 +576,8 @@ function viewDesk() {
   app.innerHTML = dayHead('プロンプトデスク', '<button class="btn ghost sm" id="logout">ログアウト</button>', 'desk') +
     '<main class="wrap"><div class="row" style="justify-content:space-between;margin-bottom:14px">' +
     '<p class="note" style="margin:0">作品ごとの状態です。ランプ：緑＝稽古中、黄＝準備中、灰＝終演</p>' +
-    '<a class="btn main" href="#/admin/w/new">＋ 新しい作品</a></div><div class="desk" id="desk">' + loading() + '</div></main>';
+    '<a class="btn main" href="#/admin/w/new">＋ 新しい作品</a></div><div class="desk" id="desk">' + loading() + '</div>' +
+    '<p class="note" style="margin-top:22px;text-align:center"><a href="check.html">この端末の動作チェック（マイク・聞き取りなど）</a></p></main>';
   document.getElementById('logout').onclick = function () { store.del('admin'); go('/'); };
   api('desk').then(function (works) {
     var d = document.getElementById('desk'); if (!d) return;

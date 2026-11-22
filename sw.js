@@ -1,6 +1,6 @@
 /* もしょこむ楽屋：画面の部品を端末に保存し、電波がなくても開けるようにする。
    画面を更新したら VERSION の数字を1つ上げてください。 */
-const VERSION = 'gakuya-v0.2.8';
+const VERSION = 'gakuya-v0.2.9';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/logo.png'];
 
@@ -17,6 +17,14 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   const isFont = /fonts\.(googleapis|gstatic)\.com$/.test(url.hostname);
   if (url.origin !== location.origin && !isFont) return;
+  /* config.js はいつも最新を取りにいく（電波がないときだけ保存分） */
+  if (url.origin === location.origin && /config\.js$/.test(url.pathname)) {
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then(res => {
+      if (res && res.ok) { const copy = res.clone(); caches.open(VERSION).then(c => c.put(req, copy)); }
+      return res;
+    }).catch(() => caches.match(req)));
+    return;
+  }
   /* 先に保存済みのものを出し、裏で新しいものを取ってくる */
   e.respondWith(caches.open(VERSION).then(cache => cache.match(req).then(hit => {
     const fresh = fetch(req).then(res => {

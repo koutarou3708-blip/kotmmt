@@ -40,6 +40,7 @@ textarea{width:100%;min-height:200px;border-radius:10px;border:1.5px solid var(-
  <h1>楽屋 動作チェック</h1>
  <p>iPhoneで上から順に試してください。最後の「結果まとめ」をコピーして送ってもらえれば、本番の構成を決めます。</p>
  <div class="env" id="env"></div>
+ <p style="margin:12px 0 0"><a href="./#/admin" style="color:#FFD84D;font-weight:bold">← 楽屋に戻る</a></p>
 </header>
 <main>
 
@@ -249,7 +250,7 @@ $('b-gas').onclick=function(){
 /* ---------- まとめ ---------- */
 var KEYS=[['mic','1 マイク'],['sr','2 聞き取り'],['tts','3 読み上げ'],['wake','4 画面を消さない'],['bg','5 ロック中の再生'],['store','6 端末への保存'],['gas','7 サーバー通信']];
 function renderSum(){
- $('sum').value=['【楽屋 動作チェック結果】','環境：'+(env.iframe?'枠の中（GASなど）':'単独ページ')+' / '+env.origin,'端末：'+env.ua,'安全な接続：'+env.secure,'枠で許可された機能：'+env.allowed,'']
+ $('sum').value=['【楽屋 動作チェック結果】','環境：'+(env.iframe?'枠の中（GASなど）':'単独ページ')+' / '+env.origin,'開き方：'+((window.navigator.standalone||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches))?'ホーム画面版':'ブラウザ'),'端末：'+env.ua,'安全な接続：'+env.secure,'枠で許可された機能：'+env.allowed,'']
   .concat(KEYS.map(function(k){return k[1]+'：'+(R[k[0]]||'未テスト')})).join('\n');
 }
 renderSum();
