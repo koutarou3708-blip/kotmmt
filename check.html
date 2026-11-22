@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>楽屋 動作チェック</title>
+<script src="config.js"></script>
+<style>
+:root{--navy:#1F2147;--salmon:#E8857A;--salmonDeep:#C4564B;--yellow:#FFD84D;--ink:#2A2530;--paper:#FFF8EC;--green:#7ED957;--red:#E0402F;--line:#e8e1d4}
+*{box-sizing:border-box}
+body{margin:0;background:var(--navy);color:var(--ink);font:16px/1.6 -apple-system,"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;padding:0 0 40px}
+header{padding:calc(20px + env(safe-area-inset-top)) 18px 22px;color:#fff;background:linear-gradient(180deg,#8E86D6 0%,var(--navy) 100%)}
+header h1{margin:0;font-size:24px;letter-spacing:.04em}
+header p{margin:6px 0 0;font-size:14px;opacity:.9}
+.env{margin:12px 0 0;font-size:12px;opacity:.8;word-break:break-all}
+main{padding:0 12px;display:grid;gap:14px;max-width:640px;margin:0 auto}
+.card{background:var(--paper);border-radius:14px;padding:16px}
+.card h2{margin:0 0 4px;font-size:17px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.card p{margin:4px 0 10px;font-size:14px;color:#5a5260}
+.pill{font-size:12px;font-weight:700;padding:2px 10px;border-radius:999px;background:#e9e4dc;color:#5a5260}
+.pill.ok{background:var(--green);color:#173404}.pill.ng{background:var(--red);color:#fff}.pill.warn{background:var(--yellow);color:#412402}
+button{font:inherit;font-weight:700;min-height:48px;padding:0 18px;border-radius:12px;border:0;background:var(--yellow);color:var(--ink);cursor:pointer}
+button.sub{background:#fff;border:1.5px solid var(--line)}
+button:active{transform:translateY(1px)}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.out{margin-top:10px;font-size:14px;background:#fff;border-radius:10px;padding:10px;min-height:44px;white-space:pre-wrap;word-break:break-all}
+.meter{height:14px;border-radius:7px;background:#e9e4dc;overflow:hidden;margin-top:10px}
+.meter i{display:block;height:100%;width:0;background:var(--salmon);transition:width .08s}
+.ring{width:18px;height:18px;border-radius:50%;background:var(--salmon);display:inline-block;opacity:.25}
+.ring.on{opacity:1;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 8px rgba(232,133,122,.25)}}
+.say{font-weight:700;background:#fff3c4;border-radius:8px;padding:6px 10px;display:inline-block}
+textarea{width:100%;min-height:200px;border-radius:10px;border:1.5px solid var(--line);padding:10px;font:13px/1.5 ui-monospace,Menlo,monospace}
+.sum h2{color:var(--ink)}
+@media(prefers-reduced-motion:reduce){.ring.on{animation:none}}
+</style>
+</head>
+<body>
+<header>
+ <h1>楽屋 動作チェック</h1>
+ <p>iPhoneで上から順に試してください。最後の「結果まとめ」をコピーして送ってもらえれば、本番の構成を決めます。</p>
+ <div class="env" id="env"></div>
+</header>
+<main>
+
+<section class="card" id="t-mic">
+ <h2>1. マイクの音量 <span class="pill" id="p-mic">未テスト</span></h2>
+ <p>ボタンを押して、何か声を出してください。バーが動けばOKです。</p>
+ <div class="row"><button id="b-mic">マイクを試す</button><button class="sub" id="b-micStop">止める</button></div>
+ <div class="meter"><i id="m-mic"></i></div>
+ <div class="out" id="o-mic">—</div>
+</section>
+
+<section class="card" id="t-sr">
+ <h2>2. 声の聞き取り（自動判定の土台） <span class="pill" id="p-sr">未テスト</span></h2>
+ <p>ボタンを押してから、このセリフを言ってください。言い終えたら自動で止まるかも確かめます。</p>
+ <div class="say" id="target">見つかってたら、こんなところで床を見てないよ。</div>
+ <div class="row" style="margin-top:10px"><span class="ring" id="ring"></span><button id="b-sr">聞き取りを始める</button></div>
+ <div class="out" id="o-sr">—</div>
+</section>
+
+<section class="card" id="t-tts">
+ <h2>3. 読み上げ（相手役の声） <span class="pill" id="p-tts">未テスト</span></h2>
+ <p>日本語の声で読み上げられるか、声が何種類あるかを調べます。</p>
+ <div class="row"><button id="b-tts">読み上げを試す</button></div>
+ <div class="out" id="o-tts">—</div>
+</section>
+
+<section class="card" id="t-wake">
+ <h2>4. 画面を消さない <span class="pill" id="p-wake">未テスト</span></h2>
+ <p>ボタンを押したら、画面に触れずに90秒待ってください（自動ロックの時間より長く）。画面が消えなければOKです。</p>
+ <div class="row"><button id="b-wake">画面を消さないテスト</button></div>
+ <div class="out" id="o-wake">—</div>
+</section>
+
+<section class="card" id="t-bg">
+ <h2>5. 画面ロック中の再生（聞き流し） <span class="pill" id="p-bg">未テスト</span></h2>
+ <p>「ポン」という音が1秒ごとに鳴ります。再生を始めたら電源ボタンで画面をロックし、20秒以上たってから戻ってきてください。ロック画面に再生の操作が出るかも見てください。</p>
+ <div class="row"><button id="b-bg">再生してロックする</button><button class="sub" id="b-bgStop">止める</button></div>
+ <div class="out" id="o-bg">—</div>
+</section>
+
+<section class="card" id="t-store">
+ <h2>6. 端末への保存（電波がない場所用） <span class="pill" id="p-store">未テスト</span></h2>
+ <p>台本や録音を端末に保存できるかを調べます（5MBの試験データを保存して読み戻します）。</p>
+ <div class="row"><button id="b-store">保存を試す</button></div>
+ <div class="out" id="o-store">—</div>
+</section>
+
+<section class="card" id="t-gas">
+ <h2>7. サーバー通信（GAS） <span class="pill" id="p-gas">未テスト</span></h2>
+ <p>本番のGASに3回問い合わせて、返事までの時間を測ります。</p>
+ <div class="row"><button id="b-gas">通信を試す</button></div>
+ <div class="out" id="o-gas">—</div>
+</section>
+
+<section class="card sum">
+ <h2>結果まとめ</h2>
+ <p>全部試したら、コピーしてチャットに貼ってください。</p>
+ <textarea id="sum" readonly></textarea>
+ <div class="row" style="margin-top:8px"><button id="b-copy">コピー</button></div>
+</section>
+</main>
+
+<script>
+(function(){
+var $=function(id){return document.getElementById(id)};
+var R={};
+function setP(k,state,label){var p=$('p-'+k);p.className='pill '+(state||'');p.textContent=label;R[k]=label+(R[k+'_d']?'（'+R[k+'_d']+'）':'');renderSum()}
+function out(k,t){$('o-'+k).textContent=t}
+function detail(k,t){R[k+'_d']=t}
+
+/* ---------- 環境 ---------- */
+var inFrame=(function(){try{return window.self!==window.top}catch(e){return true}})();
+var env={
+ ua:navigator.userAgent,
+ origin:location.origin,
+ iframe:inFrame,
+ secure:window.isSecureContext,
+ allowed:(document.featurePolicy&&document.featurePolicy.allowedFeatures)?document.featurePolicy.allowedFeatures().filter(function(f){return /microphone|wake|autoplay|camera|clipboard/.test(f)}).join(','):'(取得不可)'
+};
+$('env').textContent=(inFrame?'枠（iframe）の中で動作中':'単独のページで動作中')+' ・ '+env.origin;
+
+/* ---------- 1. マイク ---------- */
+var micStream=null,micCtx=null,micRaf=0,micMax=0;
+$('b-mic').onclick=function(){
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){setP('mic','ng','NG');out('mic','この環境ではマイク機能そのものがありません');return}
+ out('mic','許可を待っています…');
+ navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
+  micStream=s;micCtx=new (window.AudioContext||window.webkitAudioContext)();
+  var src=micCtx.createMediaStreamSource(s),an=micCtx.createAnalyser();an.fftSize=512;src.connect(an);
+  var buf=new Uint8Array(an.fftSize);micMax=0;out('mic','聞こえています。声を出してください');
+  (function loop(){an.getByteTimeDomainData(buf);var m=0;for(var i=0;i<buf.length;i++){var v=Math.abs(buf[i]-128);if(v>m)m=v}
+   micMax=Math.max(micMax,m);$('m-mic').style.width=Math.min(100,m*1.6)+'%';
+   if(micMax>20&&$('p-mic').textContent!=='OK'){detail('mic','最大音量 '+micMax);setP('mic','ok','OK')}
+   micRaf=requestAnimationFrame(loop)})();
+ }).catch(function(e){detail('mic',e.name);setP('mic','ng','NG');out('mic','使えませんでした：'+e.name+' '+(e.message||''))});
+};
+$('b-micStop').onclick=function(){cancelAnimationFrame(micRaf);if(micStream)micStream.getTracks().forEach(function(t){t.stop()});if(micCtx)micCtx.close();micStream=null;$('m-mic').style.width='0'};
+
+/* ---------- 2. 聞き取り ---------- */
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function norm(s){return (s||'').replace(/[、。！？!?\s「」…・ー]/g,'')}
+function sim(a,b){a=norm(a);b=norm(b);if(!a||!b)return 0;var dp=[];for(var i=0;i<=a.length;i++){dp[i]=[i];for(var j=1;j<=b.length;j++)dp[i][j]=i?0:j}
+ for(i=1;i<=a.length;i++)for(j=1;j<=b.length;j++)dp[i][j]=Math.min(dp[i-1][j]+1,dp[i][j-1]+1,dp[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+ return Math.max(0,1-dp[a.length][b.length]/Math.max(a.length,b.length))}
+$('b-sr').onclick=function(){
+ if(!SR){setP('sr','ng','NG');detail('sr','機能なし');out('sr','この環境には聞き取り機能がありません');return}
+ var r=new SR();r.lang='ja-JP';r.interimResults=true;r.continuous=false;
+ var t0=Date.now(),tLast=0,finalText='',interim='';
+ r.onstart=function(){$('ring').classList.add('on');out('sr','聞いています…')};
+ r.onresult=function(e){interim='';for(var i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)finalText+=e.results[i][0].transcript;else interim+=e.results[i][0].transcript}
+  tLast=Date.now();out('sr','聞き取り中：'+finalText+interim)};
+ r.onerror=function(e){$('ring').classList.remove('on');detail('sr',e.error);setP('sr','ng','NG');out('sr','エラー：'+e.error+(e.error==='not-allowed'?'（マイクが許可されていないか、枠の中で禁止されています）':''))};
+ r.onend=function(){$('ring').classList.remove('on');var txt=finalText||interim;if(!txt){if($('p-sr').textContent!=='NG'){setP('sr','warn','聞き取れず');out('sr','何も聞き取れませんでした。もう一度試してください')}return}
+  var s=Math.round(sim(txt,$('target').textContent)*100),lag=tLast?((Date.now()-tLast)/1000).toFixed(1):'?';
+  detail('sr','一致'+s+'% 終了検出'+lag+'秒');setP('sr',s>=60?'ok':'warn',s>=60?'OK':'要確認');
+  out('sr','聞き取った文：'+txt+'\n台本との一致：'+s+'%（漢字とかなの違いも減点されます）\n言い終えてから止まるまで：'+lag+'秒\n全体の時間：'+((Date.now()-t0)/1000).toFixed(1)+'秒')};
+ try{r.start()}catch(e){setP('sr','ng','NG');out('sr','開始できませんでした：'+e.message)}
+};
+
+/* ---------- 3. 読み上げ ---------- */
+$('b-tts').onclick=function(){
+ if(!('speechSynthesis' in window)){setP('tts','ng','NG');out('tts','読み上げ機能がありません');return}
+ var vs=speechSynthesis.getVoices().filter(function(v){return /^ja/i.test(v.lang)});
+ var u=new SpeechSynthesisUtterance('ねえ、鍵、まだ見つからないの？');u.lang='ja-JP';if(vs[0])u.voice=vs[0];
+ var t0=Date.now();
+ u.onend=function(){detail('tts','日本語の声'+vs.length+'種');setP('tts','ok','OK');out('tts','読み上げ完了（'+((Date.now()-t0)/1000).toFixed(1)+'秒）\n日本語の声：'+vs.length+'種類\n'+vs.map(function(v){return '・'+v.name}).join('\n'))};
+ u.onerror=function(e){detail('tts',e.error);setP('tts','ng','NG');out('tts','エラー：'+e.error)};
+ speechSynthesis.cancel();speechSynthesis.speak(u);out('tts','読み上げ中…');
+};
+
+/* ---------- 4. 画面を消さない ---------- */
+var wakeLock=null,wakeTimer=0,wakeHidden=false;
+$('b-wake').onclick=function(){
+ if(!('wakeLock' in navigator)){setP('wake','ng','NG');detail('wake','機能なし');out('wake','この環境には画面を消さない機能がありません');return}
+ navigator.wakeLock.request('screen').then(function(l){
+  wakeLock=l;wakeHidden=false;var t0=Date.now();out('wake','有効になりました。画面に触れずに待ってください…');setP('wake','warn','確認中');
+  l.addEventListener('release',function(){if(wakeTimer)out('wake','途中で解除されました（'+Math.round((Date.now()-t0)/1000)+'秒）')});
+  clearInterval(wakeTimer);wakeTimer=setInterval(function(){var s=Math.round((Date.now()-t0)/1000);
+   if(wakeHidden){clearInterval(wakeTimer);wakeTimer=0;detail('wake',s+'秒で画面が消えた');setP('wake','ng','NG');out('wake','画面が消えました（'+s+'秒）');return}
+   if(s>=90){clearInterval(wakeTimer);wakeTimer=0;detail('wake','90秒維持');setP('wake','ok','OK');out('wake','90秒間、画面が消えませんでした');l.release();return}
+   out('wake','経過 '+s+' / 90秒（触らないでください）')},1000);
+ }).catch(function(e){detail('wake',e.name);setP('wake','ng','NG');out('wake','使えませんでした：'+e.name+' '+(e.message||'')+(inFrame?'\n枠の中では禁止されている可能性があります':''))});
+};
+
+/* ---------- 5. ロック中の再生 ---------- */
+function makeWav(sec){var sr=16000,n=sr*sec,b=new ArrayBuffer(44+n*2),d=new DataView(b);
+ function w(o,s){for(var i=0;i<s.length;i++)d.setUint8(o+i,s.charCodeAt(i))}
+ w(0,'RIFF');d.setUint32(4,36+n*2,true);w(8,'WAVE');w(12,'fmt ');d.setUint32(16,16,true);d.setUint16(20,1,true);d.setUint16(22,1,true);
+ d.setUint32(24,sr,true);d.setUint32(28,sr*2,true);d.setUint16(32,2,true);d.setUint16(34,16,true);w(36,'data');d.setUint32(40,n*2,true);
+ for(var i=0;i<n;i++){var t=(i%sr)/sr,v=t<0.12?Math.sin(2*Math.PI*660*t)*Math.exp(-t*25)*0.5:0;d.setInt16(44+i*2,v*32767,true)}
+ return new Blob([b],{type:'audio/wav'})}
+var aud=new Audio(),bg={hiddenAt:0,ctAtHide:0,results:[]};
+aud.loop=true;
+$('b-bg').onclick=function(){
+ if(!aud.src)aud.src=URL.createObjectURL(makeWav(30));
+ if('mediaSession' in navigator){try{navigator.mediaSession.metadata=new MediaMetadata({title:'動作チェック（ポン）',artist:'もしょこむ楽屋'});
+  navigator.mediaSession.setActionHandler('pause',function(){aud.pause()});navigator.mediaSession.setActionHandler('play',function(){aud.play()})}catch(e){}}
+ aud.play().then(function(){setP('bg','warn','確認中');out('bg','再生中です。画面をロックして、20秒以上たってから戻ってきてください')})
+  .catch(function(e){detail('bg',e.name);setP('bg','ng','NG');out('bg','再生できませんでした：'+e.name)});
+};
+$('b-bgStop').onclick=function(){aud.pause()};
+var playedSum=0,lastCt=0,lastWall=0;
+aud.addEventListener('timeupdate',function(){var ct=aud.currentTime;if(lastWall&&ct>=lastCt)playedSum+=ct-lastCt;else if(lastWall&&ct<lastCt)playedSum+=(aud.duration-lastCt)+ct;lastCt=ct;lastWall=Date.now()});
+document.addEventListener('visibilitychange',function(){
+ if(document.hidden){wakeHidden=true;if(!aud.paused){bg.hiddenAt=Date.now();bg.played0=playedSum}}
+ else if(bg.hiddenAt){
+  var away=(Date.now()-bg.hiddenAt)/1000,played=playedSum-bg.played0;bg.hiddenAt=0;
+  if(away<10){out('bg','ロックしていた時間が短すぎます（'+away.toFixed(0)+'秒）。20秒以上ためしてください');return}
+  var ratio=played/away;detail('bg','ロック'+away.toFixed(0)+'秒中'+played.toFixed(0)+'秒再生');
+  setP('bg',ratio>0.8?'ok':'ng',ratio>0.8?'OK':'NG');
+  out('bg','ロックしていた時間：'+away.toFixed(0)+'秒\nその間に再生された時間：'+played.toFixed(0)+'秒\n'+(ratio>0.8?'ロック中も再生が続きました':'ロック中に再生が止まりました'))}
+});
+
+/* ---------- 6. 保存 ---------- */
+$('b-store').onclick=function(){
+ var lines=[];
+ try{localStorage.setItem('probe','ok');lines.push('簡易保存（localStorage）：'+(localStorage.getItem('probe')==='ok'?'OK':'NG'))}catch(e){lines.push('簡易保存（localStorage）：NG '+e.name)}
+ if(!window.indexedDB){lines.push('大容量保存（IndexedDB）：機能なし');setP('store','ng','NG');out('store',lines.join('\n'));return}
+ var q=indexedDB.open('probe',1);
+ q.onupgradeneeded=function(){q.result.createObjectStore('s')};
+ q.onerror=function(){lines.push('大容量保存：開けません '+(q.error&&q.error.name));detail('store','IndexedDB不可');setP('store','ng','NG');out('store',lines.join('\n'))};
+ q.onsuccess=function(){var db=q.result,blob=new Blob([new Uint8Array(5*1024*1024)]),tx=db.transaction('s','readwrite');
+  tx.objectStore('s').put(blob,'k');
+  tx.oncomplete=function(){var g=db.transaction('s').objectStore('s').get('k');g.onsuccess=function(){
+   var ok=g.result&&g.result.size===blob.size;lines.push('大容量保存（IndexedDB）：5MBの保存と読み戻し '+(ok?'OK':'NG'));
+   var fin=function(extra){if(extra)lines.push(extra);detail('store',ok?'5MB OK':'読み戻し失敗');setP('store',ok?'ok':'ng',ok?'OK':'NG');out('store',lines.join('\n'))};
+   if(navigator.storage&&navigator.storage.estimate)navigator.storage.estimate().then(function(e){fin('使える容量の目安：約'+Math.round((e.quota||0)/1048576)+'MB')}).catch(function(){fin()});else fin();
+  }};
+  tx.onerror=function(){lines.push('大容量保存：書き込み失敗 '+(tx.error&&tx.error.name));detail('store','書き込み失敗');setP('store','ng','NG');out('store',lines.join('\n'))};
+ };
+};
+
+/* ---------- 7. GAS通信 ---------- */
+$('b-gas').onclick=function(){
+ var url=window.API_URL;
+ if(!url){detail('gas','URL未設定');setP('gas','ng','NG');out('gas','config.js にGASのURLが入っていません');return}
+ var n=0,times=[];out('gas','測定中…');
+ (function one(){var s=Date.now();
+  fetch(url+'?t='+s,{redirect:'follow'}).then(function(r){return r.json()}).then(function(j){
+   if(!j||!j.ok)throw new Error('返事が正しくありません');
+   times.push(Date.now()-s);n++;
+   if(n<3)one();else{var avg=Math.round(times.reduce(function(a,b){return a+b},0)/times.length);detail('gas','平均'+avg+'ms');setP('gas',avg<2500?'ok':'warn',avg<2500?'OK':'遅い');out('gas','GAS '+(j.version||'')+' と3回往復：'+times.join('ms, ')+'ms\n平均：'+avg+'ms')}
+  }).catch(function(e){detail('gas',String(e));setP('gas','ng','NG');out('gas','失敗：'+e)});
+ })();
+};
+
+/* ---------- まとめ ---------- */
+var KEYS=[['mic','1 マイク'],['sr','2 聞き取り'],['tts','3 読み上げ'],['wake','4 画面を消さない'],['bg','5 ロック中の再生'],['store','6 端末への保存'],['gas','7 サーバー通信']];
+function renderSum(){
+ $('sum').value=['【楽屋 動作チェック結果】','環境：'+(env.iframe?'枠の中（GASなど）':'単独ページ')+' / '+env.origin,'端末：'+env.ua,'安全な接続：'+env.secure,'枠で許可された機能：'+env.allowed,'']
+  .concat(KEYS.map(function(k){return k[1]+'：'+(R[k[0]]||'未テスト')})).join('\n');
+}
+renderSum();
+$('b-copy').onclick=function(){var t=$('sum');
+ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t.value).then(function(){$('b-copy').textContent='コピーしました'}).catch(sel);else sel();
+ function sel(){t.focus();t.select();try{document.execCommand('copy');$('b-copy').textContent='コピーしました'}catch(e){$('b-copy').textContent='長押しでコピーしてください'}}};
+})();
+</script>
+</body>
+</html>
