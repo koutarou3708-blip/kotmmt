@@ -1,0 +1,17 @@
+{
+  "name": "もしょこむ楽屋",
+  "short_name": "楽屋",
+  "description": "劇団もしょこむの読み合わせ・セリフ練習アプリ",
+  "lang": "ja",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1F2147",
+  "theme_color": "#1F2147",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

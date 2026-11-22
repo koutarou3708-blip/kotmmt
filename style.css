@@ -1,0 +1,494 @@
+/* もしょこむ楽屋 — デザインシステム
+   夜の楽屋（劇団員）と昼の稽古場（管理者）。色はポスターから：
+   ロゴのサーモン、夜空ネイビー、日付イエロー、とまとレッド、若葉グリーン。 */
+:root{
+  --salmon:#FF7A66;--salmon-deep:#D2412F;--navy:#1F2147;--navy-2:#2B2D5E;--lavender:#8E86D6;--dawn:#F3B6C8;
+  --yellow:#FFD23F;--yellow-ink:#412402;--tomato:#F0432F;--leaf:#5CD65C;--leaf-ink:#173404;
+  --paper:#FFF8EC;--ink:#231F2B;--ink-2:#5E5566;--line:#E9DFCF;
+  --r:14px;--shadow:5px 5px 0 var(--ink);--ol:2.5px solid var(--ink);
+  --f-pop:"Mochiy Pop One","Hiragino Maru Gothic ProN",sans-serif;
+  --f-hand:"Yusei Magic","Hiragino Maru Gothic ProN",sans-serif;
+  --f-body:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;
+  --dots:radial-gradient(rgba(0,0,0,.09) 1px,transparent 1.6px) 0 0/6px 6px;
+}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0}
+body{font:16px/1.65 var(--f-body);color:var(--ink);-webkit-tap-highlight-color:transparent;overflow-x:clip;min-height:100vh}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--yellow);outline-offset:3px;border-radius:8px}
+img{max-width:100%;display:block}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* ---------- テーマ：夜の楽屋 ---------- */
+body.night{background:var(--navy);color:#fff}
+body.night::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:
+   radial-gradient(1.5px 1.5px at 12% 18%,#fff8 50%,transparent 51%),
+   radial-gradient(1px 1px at 72% 12%,#fff9 50%,transparent 51%),
+   radial-gradient(1.5px 1.5px at 88% 34%,#fff6 50%,transparent 51%),
+   radial-gradient(1px 1px at 34% 42%,#fff7 50%,transparent 51%),
+   radial-gradient(1px 1px at 56% 70%,#fff5 50%,transparent 51%),
+   radial-gradient(1.5px 1.5px at 8% 82%,#fff6 50%,transparent 51%),
+   radial-gradient(1px 1px at 92% 88%,#fff6 50%,transparent 51%)}
+#app{position:relative;z-index:1}
+.sky{background:linear-gradient(180deg,#B9A9E8 0%,var(--dawn) 34%,#9C8FD9 64%,var(--navy) 100%);
+  padding:calc(18px + env(safe-area-inset-top)) max(4vw,16px) 40px;color:var(--ink)}
+.sky-in{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:inherit}
+.logo img{width:clamp(120px,34vw,170px);height:auto;flex:none;filter:drop-shadow(0 4px 0 rgba(42,37,48,.18));transform:rotate(-3deg)}
+.sky-in{position:relative}
+.lead{position:relative;padding-right:78px;min-height:64px}
+.sky-sheep{width:68px;height:auto;position:absolute;right:0;top:-6px;animation:bob 3.2s ease-in-out infinite}
+.logo-t{font:400 26px/1.05 var(--f-pop);letter-spacing:.04em}
+.logo-t small{display:block;font:400 12px/1.4 var(--f-body);letter-spacing:.12em;color:var(--ink-2)}
+.lead{max-width:1100px;margin:18px auto 0;font:400 18px/1.5 var(--f-hand)}
+.wrap{max-width:1100px;margin:0 auto;padding:0 max(4vw,16px) 64px}
+
+/* ---------- 楽屋口の掲示板 ---------- */
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(46%,220px),1fr));gap:30px 18px;margin-top:-12px}
+.poster{position:relative;display:block;border:0;padding:0;background:none;text-align:left;color:#fff;
+  transform:rotate(var(--tilt,0deg));transition:transform .25s}
+.poster:hover,.poster:focus-visible{transform:rotate(0deg) translateY(-3px)}
+.poster:active{transform:scale(.98)}
+.poster .art{display:block;aspect-ratio:3/4;border-radius:6px;overflow:hidden;box-shadow:var(--shadow);background:var(--navy-2)}
+.poster .art img{width:100%;height:100%;object-fit:cover}
+.poster .tape{position:absolute;left:50%;top:-10px;width:64px;height:20px;transform:translateX(-50%) rotate(-4deg);
+  background:rgba(255,216,77,.82);z-index:2;clip-path:polygon(3% 0,97% 4%,100% 50%,96% 100%,2% 96%,0 48%)}
+.poster .cap{display:block;margin-top:10px;font-weight:700;font-size:15px;line-height:1.4}
+.poster .cap small{display:block;font-weight:400;font-size:13px;opacity:.75}
+.poster.closed .art{filter:grayscale(.85) brightness(.85)}
+.gen{width:100%;height:100%;display:flex;flex-direction:column;justify-content:flex-end;padding:14px;position:relative;
+  background:linear-gradient(165deg,hsl(var(--hue) 70% 72%),hsl(calc(var(--hue) + 40) 60% 45%) 70%,var(--navy))}
+.gen::before{content:"";position:absolute;right:16%;top:14%;width:26%;aspect-ratio:1;border-radius:50%;
+  box-shadow:-9px 7px 0 0 #FFF3C9;transform:rotate(-10deg)}
+.gen b{font:400 clamp(17px,4.2vw,22px)/1.25 var(--f-pop);color:#fff;
+  text-shadow:2px 2px 0 var(--ink),-1px -1px 0 var(--ink),1px -1px 0 var(--ink),-1px 1px 0 var(--ink)}
+.badge{position:absolute;right:-10px;top:-14px;z-index:3;width:68px;height:68px;border-radius:50%;
+  background:var(--yellow);color:var(--yellow-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font:400 18px/1 var(--f-pop);box-shadow:0 3px 0 rgba(65,36,2,.35);transform:rotate(8deg)}
+.badge::after{content:"";position:absolute;inset:0;border-radius:50%;background:var(--dots);pointer-events:none}
+.badge small{font:700 10.5px/1.3 var(--f-body);margin-top:3px}
+.badge.gray{background:#D3D1C7;color:#2C2C2A}
+.stamp{position:absolute;left:10px;top:12px;z-index:3;padding:5px 10px;border:2.5px solid var(--salmon);border-radius:999px;
+  color:#fff;background:rgba(196,86,75,.85);font:700 12px/1 var(--f-body);transform:rotate(-8deg)}
+.empty{padding:40px 20px;text-align:center;font-family:var(--f-hand);font-size:18px;opacity:.9}
+.foot{margin-top:56px;text-align:center;font-size:14px;opacity:.75}
+.foot a,.link{color:inherit}
+
+/* ---------- 稽古台本の表紙（台本棚で使う） ---------- */
+  background:linear-gradient(180deg,#7A5434 0%,#5E3F26 100%);box-shadow:inset 0 2px 0 rgba(255,255,255,.12),0 8px 0 rgba(0,0,0,.25)}
+  background:radial-gradient(circle,#FFE58A 0 4px,#B38F14 4.5px 5px,transparent 5.5px) 0 0/34px 10px repeat-x;filter:drop-shadow(0 0 4px rgba(255,216,77,.7))}
+  background:repeating-linear-gradient(90deg,rgba(0,0,0,.05) 0 2px,transparent 2px 46px)}
+.book{position:relative;display:block;border:0;padding:0;background:none;text-align:left;color:#fff;transform:rotate(var(--tilt,0deg));transition:transform .2s}
+.book:hover,.book:focus-visible{transform:rotate(0deg) translateY(-4px)}
+.book:active{transform:scale(.97)}
+.book .badge{right:-10px;top:auto;bottom:46px;width:62px;height:62px;font-size:16px;transform:rotate(-8deg)}
+.book .cap{display:block;margin-top:14px;font-size:13px;line-height:1.45;color:#FCEFD9}
+.book .cap small{display:block;opacity:.8;font-size:12px}
+.book.closed .cover{filter:grayscale(.75) brightness(.92)}
+.cover{position:relative;display:block;aspect-ratio:210/297;border-radius:3px 7px 7px 3px;overflow:visible;
+  background:var(--dots),var(--cv);color:var(--ink);
+  box-shadow:2px 3px 0 0 #FFFDF6,4px 6px 0 0 #E9DFCC,6px 9px 0 0 #FFFDF6,8px 12px 16px rgba(0,0,0,.4)}
+.bind{position:absolute;left:0;top:0;bottom:0;width:13%;background:var(--tp);border-radius:3px 0 0 3px;
+  display:flex;flex-direction:column;justify-content:space-around;align-items:center;box-shadow:inset -2px 0 0 rgba(0,0,0,.18)}
+.bind i{width:42%;height:3px;border-radius:2px;background:#E8E6E1;box-shadow:0 1px 0 rgba(0,0,0,.35)}
+.cv-top{position:absolute;right:9%;top:6%;font:700 10px/1 var(--f-body);letter-spacing:.2em;border:1.5px solid currentColor;padding:4px 5px;border-radius:3px;opacity:.75}
+.cv-title{position:absolute;left:calc(13% + 8px);right:8%;top:16%;bottom:16%;display:flex;justify-content:center;
+  writing-mode:vertical-rl;text-orientation:upright;font:400 clamp(15px,4.6vw,21px)/1.45 var(--f-pop);letter-spacing:.06em;overflow:hidden;
+  transition:font-size .45s}
+.cv-foot{position:absolute;left:calc(13% + 8px);bottom:5%;font:700 10px/1 var(--f-body);letter-spacing:.12em;opacity:.7}
+.photo{position:absolute;left:calc(13% + 8px);bottom:6%;width:30%;aspect-ratio:3/4;transform:rotate(-4deg);background:#fff;padding:3px;box-shadow:0 2px 4px rgba(0,0,0,.25)}
+.photo:empty{display:none}
+.photo img{width:100%;height:100%;object-fit:cover}
+.photo::before{content:"";position:absolute;left:50%;top:-6px;width:60%;height:10px;transform:translateX(-50%) rotate(3deg);background:rgba(255,216,77,.8)}
+.tab{position:absolute;left:30%;top:-14px;padding:3px 8px 8px;background:#FFD84D;color:var(--yellow-ink);font:400 11px/1.2 var(--f-hand);
+  border-radius:3px 3px 0 0;transform:rotate(-3deg);box-shadow:0 -1px 0 rgba(0,0,0,.08);z-index:-1}
+
+/* ---------- 舞台（幕が下りたステージ） ---------- */
+.theater{position:relative;margin:0 calc(-1 * max(4vw,16px));padding:66px max(4vw,16px) 78px;overflow:hidden;background:#140C0A}
+.th-stage{position:absolute;inset:0;background:radial-gradient(ellipse 70% 55% at 50% 78%,rgba(255,226,150,.85),rgba(176,90,40,.45) 45%,transparent 75%),linear-gradient(#1A0F0C,#2A1610)}
+.th-curtain{position:absolute;top:0;bottom:56px;width:51%;z-index:1;transition:transform 1.1s cubic-bezier(.6,0,.25,1);
+  background:linear-gradient(180deg,rgba(0,0,0,.3),transparent 18%,transparent 82%,rgba(0,0,0,.4)),
+    repeating-linear-gradient(90deg,#6E0E14 0,#A51B23 14px,#C8323A 22px,#A51B23 30px,#6E0E14 44px)}
+.th-curtain.l{left:0;box-shadow:inset -16px 0 22px rgba(0,0,0,.45)}
+.th-curtain.r{right:0;box-shadow:inset 16px 0 22px rgba(0,0,0,.45)}
+.theater.opening .th-curtain.l{transform:translateX(-102%)}
+.theater.opening .th-curtain.r{transform:translateX(102%)}
+.th-valance{position:absolute;left:0;right:0;top:0;height:50px;z-index:3;border-top:4px solid #D9A93B;
+  background:radial-gradient(circle at 50% 0,#B01E26 0 69%,transparent 70%) 0 20px/44px 44px repeat-x,linear-gradient(#7E1218,#B01E26) 0 0/100% 32px no-repeat;
+  filter:drop-shadow(0 6px 6px rgba(0,0,0,.45))}
+.th-valance::after{content:"";position:absolute;left:0;right:0;top:28px;height:4px;background:radial-gradient(circle,#E8C15A 0 1.6px,transparent 2px) 0 0/8px 4px repeat-x}
+.th-floor{position:absolute;left:0;right:0;bottom:0;height:56px;z-index:1;
+  background:repeating-linear-gradient(90deg,rgba(0,0,0,.2) 0 2px,transparent 2px 70px),linear-gradient(#A0703F,#6E4628);box-shadow:inset 0 5px 0 rgba(255,240,200,.18)}
+.doors{position:relative;z-index:2;display:grid;grid-template-columns:repeat(auto-fill,minmax(min(44%,200px),1fr));gap:40px 18px}
+.theater.opening .door:not(.open){opacity:.35;transition:opacity .5s}
+
+/* ---------- 楽屋の扉 ---------- */
+.door{position:relative;display:block;border:0;padding:0;background:none;color:#fff;text-align:left;transition:transform .2s}
+.door:hover,.door:focus-visible{transform:translateY(-4px)}
+.door:active{transform:scale(.97)}
+.door .badge{right:-10px;top:-16px;width:60px;height:60px;font-size:15px}
+.door .cap{display:block;margin-top:14px;font-size:13px;line-height:1.45;color:#FCEFD9;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+.door .cap small{display:block;opacity:.85;font-size:12px}
+.d-frame{container-type:inline-size;position:relative;display:block;aspect-ratio:5/8;border-radius:3cqw 3cqw 0 0;background:linear-gradient(90deg,#4A2E18,#5E3F26 50%,#4A2E18);
+  box-shadow:0 2cqw 0 #2A1A10,0 7cqw 10cqw rgba(0,0,0,.55);perspective:190cqw}
+.d-inside{position:absolute;left:5.5cqw;right:5.5cqw;top:5.5cqw;bottom:0;overflow:hidden;background:radial-gradient(ellipse at 50% 72%,#FFF2C8 0,#F8C46A 32%,#9A5A26 72%,#2A1A12 100%)}
+.d-leaf{position:absolute;left:5.5cqw;right:5.5cqw;top:5.5cqw;bottom:0;transform-origin:left center;transform-style:preserve-3d;transition:transform 1s cubic-bezier(.5,0,.25,1)}
+.d-front,.d-back{position:absolute;inset:0;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.d-front{background:repeating-linear-gradient(90deg,rgba(120,80,40,.05) 0 .5cqw,transparent .5cqw 6cqw),var(--dc);box-shadow:inset -1.2cqw 0 0 rgba(0,0,0,.08),inset 0 0 0 .6cqw rgba(0,0,0,.06)}
+.d-back{transform:rotateY(180deg);background:linear-gradient(90deg,#B9A383,#CDB894)}
+.d-panel{position:absolute;left:9cqw;right:9cqw;border-radius:1.2cqw;box-shadow:inset 0 0 0 1cqw rgba(0,0,0,.07),inset .8cqw .8cqw 0 1.4cqw rgba(255,255,255,.35)}
+.d-p1{top:7cqw;height:76cqw}.d-p2{bottom:8cqw;height:50cqw}
+.d-note{position:absolute;left:12cqw;right:12cqw;top:17cqw;display:flex;flex-direction:column;align-items:center;gap:2.4cqw;padding:7cqw 4cqw 6cqw;
+  background:#FFFDF6;color:var(--ink);text-align:center;transform:rotate(-2deg);box-shadow:0 1cqw 2cqw rgba(0,0,0,.22)}
+.d-note::before,.d-note::after{content:"";position:absolute;top:-2.4cqw;width:16cqw;height:5cqw;background:rgba(255,216,77,.85)}
+.d-note::before{left:-3cqw;transform:rotate(-24deg)}.d-note::after{right:-3cqw;transform:rotate(24deg)}
+.d-note small{font:700 3.8cqw/1 var(--f-body);letter-spacing:.12em;color:var(--ink-2)}
+.d-note b{font:400 7cqw/1.3 var(--f-pop);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;text-wrap:balance}
+.d-note em{font:700 6cqw/1 var(--f-body);font-style:normal;letter-spacing:.24em;border-top:.6cqw solid var(--ink);padding-top:2.6cqw;margin-top:.6cqw}
+.d-name{position:absolute;left:20cqw;right:20cqw;top:104cqw;padding:2cqw 2cqw;text-align:center;background:#FFD84D;color:var(--yellow-ink);
+  font:400 5cqw/1.2 var(--f-hand);transform:rotate(2deg);box-shadow:0 .6cqw 0 rgba(0,0,0,.15);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.d-knob{position:absolute;right:7cqw;top:58%;width:8cqw;height:8cqw;border-radius:50%;background:radial-gradient(circle at 35% 35%,#FFF1B8,#D9A93B 45%,#8A6418);box-shadow:0 .8cqw 1cqw rgba(0,0,0,.35)}
+.door.open .d-leaf{transform:rotateY(-108deg)}
+.door.closed .d-front{filter:grayscale(.65) brightness(.88)}
+.door.closed .d-inside{filter:brightness(.3) grayscale(.5)}
+.door:hover .d-leaf{transform:rotateY(-6deg)}
+.door.open:hover .d-leaf{transform:rotateY(-108deg)}
+
+/* ---------- 扉の奥の楽屋へ歩いて入る ---------- */
+.d-inside .room{display:block;width:100%;height:100%}
+.walk{position:fixed;inset:0;z-index:70;pointer-events:none;background:rgba(20,12,10,0);transition:background .5s,opacity .45s}
+.walk.in{background:#140C0A}
+.walk.done{opacity:0}
+.walk-room{position:absolute;overflow:hidden;transform-origin:50% 42%;
+  transition:left .6s cubic-bezier(.5,0,.3,1),top .6s cubic-bezier(.5,0,.3,1),width .6s cubic-bezier(.5,0,.3,1),height .6s cubic-bezier(.5,0,.3,1),transform .75s cubic-bezier(.45,0,.6,1),filter .75s}
+.walk-room .room{display:block;width:100%;height:100%}
+.walk.deep .walk-room{transform:scale(1.9);filter:brightness(1.12) saturate(1.05)}
+
+/* ---------- 入館パス（ボトムシート） ---------- */
+.veil{position:fixed;inset:0;z-index:20;background:rgba(15,12,35,.6);display:flex;align-items:flex-end;justify-content:center;
+  animation:fade .2s ease-out}
+.sheet{width:min(460px,100%);padding:0 14px calc(18px + env(safe-area-inset-bottom));animation:rise .32s cubic-bezier(.2,1.3,.4,1)}
+.pass{position:relative;background:var(--paper);color:var(--ink);border-radius:18px;padding:34px 20px 20px;box-shadow:0 8px 0 rgba(0,0,0,.25)}
+.pass::before{content:"";position:absolute;left:50%;top:12px;width:44px;height:10px;border-radius:6px;transform:translateX(-50%);
+  background:var(--navy);box-shadow:inset 0 2px 0 rgba(0,0,0,.4)}
+.pass-top{display:flex;justify-content:space-between;align-items:center;gap:8px;border-bottom:2px dashed var(--line);padding-bottom:12px;margin-bottom:14px}
+.pass-top b{font:400 13px/1 var(--f-pop);color:#fff;background:var(--salmon-deep);padding:6px 10px;border-radius:8px;letter-spacing:.1em}
+.pass h2{margin:0 0 4px;font:400 20px/1.35 var(--f-pop)}
+.pass p{margin:0 0 14px;color:var(--ink-2);font-size:14px}
+.code-in{width:100%;height:64px;border:2.5px solid var(--ink);border-radius:12px;background:#fff;text-align:center;
+  font:400 28px/1 var(--f-pop);letter-spacing:.32em;text-transform:uppercase;padding-left:.32em}
+.code-in:focus{outline:none;border-color:var(--salmon-deep);box-shadow:0 0 0 4px rgba(232,133,122,.3)}
+.shake{animation:shake .4s}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row.end{justify-content:flex-end}
+.say{display:flex;align-items:flex-end;gap:8px;margin-top:12px;min-height:56px}
+.say svg{width:52px;flex:none}
+.bubble{position:relative;background:#fff;color:var(--ink);border:2.5px solid var(--ink);border-radius:16px;padding:7px 12px;
+  font:400 15px/1.45 var(--f-hand)}
+.bubble::after{content:"";position:absolute;left:-9px;bottom:10px;width:12px;height:12px;background:#fff;
+  border-left:2.5px solid var(--ink);border-bottom:2.5px solid var(--ink);transform:rotate(45deg)}
+
+/* ---------- ボタン ---------- */
+.btn{min-height:48px;padding:0 20px;border-radius:12px;border:0;font-weight:700;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  text-decoration:none;transition:transform .12s;position:relative}
+.btn:active{transform:translateY(2px)}
+.btn.main{background:var(--yellow);color:var(--yellow-ink);box-shadow:0 4px 0 #B38F14}
+.btn.main::after{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--dots);pointer-events:none}
+.btn.main:active{box-shadow:0 2px 0 #B38F14}
+.btn.brand{background:var(--salmon-deep);color:#fff;box-shadow:0 4px 0 #8E3A31}
+.btn.ghost{background:transparent;border:2px solid currentColor}
+.btn.quiet{background:rgba(42,37,48,.06);color:var(--ink)}
+.btn.wide{width:100%}
+.btn[disabled]{opacity:.5;cursor:default}
+.btn.sm{min-height:40px;padding:0 12px;font-size:14px}
+
+/* ---------- 幕 ---------- */
+.curtain{position:fixed;inset:0;z-index:40;display:flex;pointer-events:none}
+.curtain i{flex:1;background:
+  repeating-linear-gradient(90deg,rgba(0,0,0,.28) 0 6px,rgba(0,0,0,0) 14px 30px,rgba(0,0,0,.22) 38px 44px),
+  linear-gradient(180deg,#B01E26,#7E1218);transition:transform .8s cubic-bezier(.6,0,.3,1)}
+.curtain i:first-child{box-shadow:inset -10px 0 18px rgba(0,0,0,.35)}
+.curtain i:last-child{box-shadow:inset 10px 0 18px rgba(0,0,0,.35)}
+.curtain.open i:first-child{transform:translateX(-102%)}
+.curtain.open i:last-child{transform:translateX(102%)}
+
+/* ---------- 作品の楽屋（ホーム） ---------- */
+.homehead{padding:calc(14px + env(safe-area-inset-top)) max(4vw,16px) 28px;
+  background:linear-gradient(180deg,#2B2D5E 0%,var(--navy) 100%);position:relative}
+.homehead-in{max-width:1100px;margin:0 auto;position:relative}
+.back{display:inline-flex;align-items:center;gap:6px;min-height:44px;color:#fff;text-decoration:none;font-size:14px;opacity:.85;background:none;border:0;padding:0}
+.homehead h1{margin:10px 0 4px;font:400 clamp(24px,6vw,36px)/1.2 var(--f-pop);padding-right:84px;text-wrap:balance}
+.homehead .meta{opacity:.8;font-size:14px;padding-right:84px}
+.homehead .badge{right:0;top:52px;transform:rotate(6deg)}
+.tapes{display:flex;flex-wrap:wrap;gap:10px;margin-top:16px;align-items:center}
+.tapes>span:first-child{font-size:13px;opacity:.75}
+.tape-r{display:inline-block;padding:4px 14px;font:400 16px/1.4 var(--f-hand);color:var(--ink);background:var(--c);
+  transform:rotate(var(--t));clip-path:polygon(2% 6%,6% 0,96% 3%,100% 40%,97% 100%,4% 95%,0 55%);animation:stick .3s ease-out both}
+.modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:14px;margin-top:22px}
+.mode{position:relative;display:grid;grid-template-columns:72px minmax(0,1fr);gap:14px;align-items:center;text-align:left;
+  background:var(--paper);color:var(--ink);border:0;border-radius:var(--r);padding:16px;box-shadow:var(--shadow);min-height:108px}
+.mode b{display:block;font:400 20px/1.3 var(--f-pop)}
+.mode small{display:block;color:var(--ink-2);font-size:13.5px;line-height:1.5;margin-top:2px}
+.mode .soon{position:absolute;right:10px;top:-10px;background:var(--tomato);color:#fff;font:700 12px/1 var(--f-body);padding:6px 10px;border-radius:999px;transform:rotate(4deg)}
+.mode[aria-disabled=true]{cursor:default}
+.mode[aria-disabled=true] .ico{opacity:.8}
+.ico{width:72px;height:72px}
+.sec-t{margin:36px 0 12px;font:400 20px/1.3 var(--f-pop)}
+.flowers{display:flex;gap:12px;flex-wrap:wrap;background:rgba(255,255,255,.06);border:2px dashed rgba(255,255,255,.18);border-radius:var(--r);padding:18px}
+.flowers p{margin:0;font-family:var(--f-hand);font-size:16px;opacity:.9;flex:1 1 220px;align-self:center}
+.vase{width:44px;height:64px;flex:none}
+.hello{margin-top:18px}
+.hello .bubble{font-size:16px}
+
+/* ---------- テーマ：昼の稽古場（管理） ---------- */
+body.day{background:#FBF5EA;color:var(--ink)}
+body.day::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:repeating-linear-gradient(90deg,rgba(150,110,60,.05) 0 2px,transparent 2px 120px)}
+.dayhead{background:var(--salmon-deep);color:#fff;padding:calc(12px + env(safe-area-inset-top)) max(4vw,16px) 14px;
+  position:sticky;top:0;z-index:10;box-shadow:0 3px 0 rgba(0,0,0,.12)}
+.dayhead-in{max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.dayhead h1{margin:0;font:400 20px/1.2 var(--f-pop);display:flex;align-items:center;gap:10px}
+.dayhead h1 svg{width:40px;height:auto}
+.dayhead .btn.ghost{color:#fff;min-height:40px;font-size:14px}
+.card{background:#fff;border-radius:var(--r);padding:18px;border:1.5px solid var(--line);box-shadow:0 3px 0 rgba(120,90,50,.08)}
+.card+.card{margin-top:16px}
+.card h2{margin:0 0 12px;font:400 18px/1.3 var(--f-pop);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.card h2 .tape-r{font-size:14px;padding:2px 10px}
+.day .wrap{padding-top:20px}
+.desk{display:grid;gap:12px}
+.deskrow{display:grid;grid-template-columns:58px minmax(0,1fr) auto;gap:14px;align-items:center;background:#fff;border:1.5px solid var(--line);
+  border-radius:var(--r);padding:12px;text-align:left;color:var(--ink);width:100%}
+.thumb{width:58px;aspect-ratio:3/4;border-radius:5px;overflow:hidden;background:var(--navy)}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.thumb .gen{padding:5px}.thumb .gen b{font-size:9px}.thumb .gen::before{display:none}
+.deskrow b{display:block;font-size:16px}
+.deskrow small{display:block;color:var(--ink-2);font-size:13px}
+.lamp{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;white-space:nowrap}
+.lamp::before{content:"";width:12px;height:12px;border-radius:50%;background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 30%,transparent)}
+.lamp.rehearsal{--c:var(--leaf)}.lamp.prep{--c:var(--yellow)}.lamp.closed{--c:#B4B2A9}.lamp.hidden{--c:#5F5E5A}
+.form{display:grid;gap:14px}
+.form .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr));gap:14px}
+label.f{display:grid;gap:5px;font-size:14px;font-weight:700}
+label.f span{font-weight:400;color:var(--ink-2);font-size:13px}
+.in{width:100%;min-height:48px;border:1.5px solid #D9CDB8;border-radius:12px;background:#fff;padding:0 12px;font-size:16px}
+textarea.in{padding:10px 12px;min-height:80px}
+.in:focus{outline:none;border-color:var(--salmon-deep);box-shadow:0 0 0 4px rgba(232,133,122,.25)}
+.posterpick{display:grid;grid-template-columns:110px minmax(0,1fr);gap:14px;align-items:center}
+.posterpick .thumb{width:110px}
+.cast{display:grid;gap:10px}
+.castrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;align-items:center;padding:12px;border-radius:12px;background:#FFFBF3;border:1.5px solid var(--line)}
+.castrow.off{opacity:.55}
+.castrow .who b{font-size:16px}
+.castrow .who .tapes{margin-top:6px;gap:6px}
+.castrow .who .tape-r{font-size:13.5px;padding:2px 10px}
+.codebox{font:400 22px/1 var(--f-pop);letter-spacing:.18em;background:var(--navy);color:var(--yellow);padding:10px 12px 10px 14px;border-radius:10px;text-align:center;white-space:nowrap}
+.castrow .acts{grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+.seen{font-size:12.5px;color:var(--ink-2)}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:12px}
+.step{border:2px dashed #D9CDB8;border-radius:var(--r);padding:14px;background:#FFFCF6}
+.step .no{display:inline-flex;width:36px;height:36px;border-radius:50%;background:var(--yellow);color:var(--yellow-ink);font:400 16px/1 var(--f-pop);align-items:center;justify-content:center;margin-bottom:6px}
+.step b{display:block}
+.step small{color:var(--ink-2)}
+.note{font-size:13px;color:var(--ink-2);margin:6px 0 0}
+.demo{background:var(--yellow);color:var(--yellow-ink);font-size:13px;padding:8px max(4vw,16px);text-align:center;position:relative;z-index:5}
+.demo b{font-family:var(--f-pop);font-weight:400;letter-spacing:.08em}
+.login{max-width:420px;margin:8vh auto 0}
+
+/* ---------- 管理メニュー（タブ） ---------- */
+.tabs{max-width:1100px;margin:10px auto 0;display:flex;gap:6px;overflow-x:auto}
+.tabs a{flex:none;color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:8px 14px;border-radius:10px 10px 0 0;opacity:.78}
+.tabs a[aria-current]{background:#FBF5EA;color:var(--salmon-deep);opacity:1}
+.dayhead:has(.tabs){padding-bottom:0}
+
+/* ---------- 台本棚 ---------- */
+.filters{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;margin-bottom:6px}
+.chip{flex:none;min-height:40px;display:inline-flex;align-items:center;padding:0 14px;border-radius:999px;border:1.5px solid #D9CDB8;background:#fff;color:var(--ink);text-decoration:none;font-size:14px;font-weight:700;max-width:70vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip[aria-current]{background:var(--ink);color:#fff;border-color:var(--ink)}
+.shelves{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px;align-items:start}
+.shelves .card+.card{margin-top:0}
+.shelfhead{display:grid;grid-template-columns:52px minmax(0,1fr);gap:12px;align-items:center;margin-bottom:6px}
+.shelfhead .thumb{width:52px}
+.shelfhead h2{margin:0 0 4px}
+.shelf-t{margin:16px 0 8px;font-size:13px;color:var(--ink-2);letter-spacing:.08em}
+.ver{display:grid;grid-template-columns:12px minmax(0,1fr);border-radius:10px;overflow:hidden;border:1.5px solid var(--line);background:#FFFCF6;margin-bottom:10px;position:relative}
+.spine{background:#B4B2A9}
+.ver.final{border:2px solid var(--salmon-deep);background:#fff}
+.ver.final .spine{background:var(--salmon-deep)}
+.ver.draft .spine{background:var(--yellow)}
+.ver-body{padding:12px 14px;position:relative}
+.ver-body b{display:block;font-size:16px;padding-right:76px}
+.ver-body small{display:block;color:var(--ink-2);font-size:13px}
+.ver-body .fname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ver .acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.vnote{margin:8px 0 0;font-size:14px;background:#FFF3C4;border-radius:6px;padding:6px 10px;font-family:var(--f-hand)}
+.vstamp{position:absolute;right:12px;top:10px;border:2.5px solid var(--salmon-deep);color:var(--salmon-deep);border-radius:8px;padding:2px 8px;font:400 13px/1.3 var(--f-pop);transform:rotate(6deg)}
+.vtag{position:absolute;right:12px;top:10px;background:var(--yellow);color:var(--yellow-ink);font-size:12px;font-weight:700;padding:3px 10px;transform:rotate(4deg);clip-path:polygon(0 0,100% 4%,97% 100%,3% 96%)}
+.upl{margin-top:4px}
+.prog{height:8px;border-radius:4px;background:#EFE6D6;overflow:hidden;margin-top:10px}
+.prog i{display:block;height:100%;width:0;background:var(--salmon-deep);transition:width .2s}
+.pastbox{margin-top:14px;border-top:2px dashed var(--line);padding-top:10px}
+.pastbox summary{cursor:pointer;font-weight:700;min-height:44px;display:flex;align-items:center}
+.pastbox .ver{opacity:.85}
+
+/* ---------- 台本棚（本棚） ---------- */
+.bookcase{background:linear-gradient(180deg,#6E4A2C,#553821);border-radius:16px;padding:16px 12px 6px;border:6px solid #4A2E18;
+  box-shadow:inset 0 0 0 2px rgba(255,255,255,.06),0 8px 0 rgba(0,0,0,.18)}
+.shelfrow{position:relative;margin-bottom:18px}
+.plate{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:100%;background:#F6E9CC;color:var(--ink);border:2px solid #B38F14;border-radius:6px;padding:5px 12px;
+  box-shadow:0 2px 0 rgba(0,0,0,.25)}
+.plate b{font-size:15px}
+.shelfbooks{display:flex;gap:16px;overflow-x:auto;padding:22px 6px 10px;align-items:flex-end;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.sbook{flex:0 0 112px;position:relative;display:block;border:0;background:none;padding:0;text-align:left;color:#FCEFD9;scroll-snap-align:start;transition:transform .15s}
+.sbook:hover,.sbook:focus-visible{transform:translateY(-6px)}
+.sbook .cover{box-shadow:2px 2px 0 0 #FFFDF6,3px 4px 0 0 #E9DFCC,5px 7px 10px rgba(0,0,0,.45)}
+.sbook .cv-title{font-size:13px;top:20%;bottom:22%}
+.sbook .cv-top,.sbook .cv-foot{font-size:7.5px}
+.sbook .tab{font-size:10px;top:-13px}
+.sbook.st-past{flex-basis:92px}
+.sbook.st-past .cover{filter:grayscale(.65) brightness(.88)}
+.sb-cap{display:block;margin-top:10px;line-height:1.35}
+.sb-cap b{display:block;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-cap small{font-size:11.5px;opacity:.75}
+.sbook.add{cursor:pointer}
+.addslot{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;aspect-ratio:210/297;border:2.5px dashed rgba(252,239,217,.55);border-radius:4px;
+  font-size:12px;text-align:center;line-height:1.4;color:#FCEFD9}
+.addslot b{font:400 28px/1 var(--f-pop);color:var(--yellow)}
+.sbook.add:hover .addslot{border-color:var(--yellow)}
+.sbook.add .prog{position:absolute;left:0;right:0;bottom:-14px}
+.board-plank{height:16px;margin:0 -12px;background:linear-gradient(180deg,#A0703F,#7A5434 60%,#5E3F26);box-shadow:0 7px 8px rgba(0,0,0,.35)}
+.shelfempty{color:#FCEFD9;opacity:.85;margin:0 6px 10px}
+.cv-ver{position:absolute;left:calc(13% + 5px);right:6px;bottom:13%;padding:2px 4px;background:rgba(255,253,246,.85);border-radius:3px;
+  font:700 10.5px/1.3 var(--f-body);text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cover.st-final .cv-top{display:none}
+.cv-stamp{position:absolute;right:5%;top:4%;padding:2px 5px;border:2px solid var(--salmon-deep);color:var(--salmon-deep);background:rgba(255,255,255,.7);
+  border-radius:5px;font:400 11px/1.2 var(--f-pop);transform:rotate(8deg)}
+.bookpass .bk-head{display:grid;grid-template-columns:92px minmax(0,1fr);gap:14px;align-items:start;margin-bottom:12px}
+.bookpass .bk-cover{display:block;width:92px}
+.bookpass .bk-cover .cv-title{font-size:12px}
+.bookpass .bk-cover .cv-top,.bookpass .bk-cover .cv-foot{font-size:7px}
+.bookpass h2{margin:0 0 2px}
+.bookpass p{margin:0 0 6px}
+.bk-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+
+/* ---------- ホーム画面に置く案内 ---------- */
+.install{display:grid;grid-template-columns:56px minmax(0,1fr);gap:12px;align-items:start;background:var(--paper);color:var(--ink);border-radius:var(--r);padding:14px;margin:-8px 0 28px;box-shadow:var(--shadow)}
+.install b{font:400 16px/1.4 var(--f-pop)}
+.install p{margin:4px 0 10px;font-size:14px;color:var(--ink-2)}
+
+/* アプリとして開いたとき（ホーム画面から） */
+@media (display-mode: standalone){.foot{padding-bottom:env(safe-area-inset-bottom)}}
+
+/* ---------- 待受画面 ---------- */
+.splash{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(180deg,#B9A9E8 0%,var(--dawn) 30%,#9C8FD9 58%,var(--navy) 100%);transition:opacity .45s}
+.splash.out{opacity:0}
+.splash-in{display:flex;flex-direction:column;align-items:center;gap:6px;color:#fff;animation:rise .6s cubic-bezier(.2,1.3,.4,1)}
+.splash-in img{width:min(64vw,280px);height:auto;filter:drop-shadow(0 6px 0 rgba(42,37,48,.2))}
+.splash-in svg{width:96px;height:auto;margin-top:-18px;animation:bob 1.6s ease-in-out infinite}
+.splash-in b{font:400 34px/1.1 var(--f-pop);letter-spacing:.12em;text-shadow:0 3px 0 rgba(31,33,71,.35)}
+.splash-in small{font:400 15px/1.4 var(--f-hand);opacity:.9}
+
+/* ---------- 共通 ---------- */
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translate(-50%,20px);opacity:0;z-index:60;
+  background:var(--ink);color:#fff;padding:12px 18px;border-radius:12px;font-size:15px;max-width:92vw;transition:.25s;pointer-events:none}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+.loading{display:flex;justify-content:center;padding:48px 0}
+.loading svg{width:84px;animation:bob 1.2s ease-in-out infinite}
+.skel{border-radius:6px;aspect-ratio:3/4;background:rgba(255,255,255,.08)}
+@keyframes fade{from{opacity:0}}
+@keyframes rise{from{transform:translateY(40%)}}
+@keyframes shake{20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
+@keyframes stick{0%{transform:rotate(var(--t)) scale(1.12);opacity:0}70%{transform:rotate(var(--t)) scale(.97);opacity:1}}
+@keyframes bob{50%{transform:translateY(-6px)}}
+@media(min-width:760px){.board{grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:40px 28px}}
+/* =====================================================
+   ポップ仕上げ：黒くはっきりした輪郭と、ずらした影
+   ===================================================== */
+.sky{background:linear-gradient(180deg,#A78BFA 0%,#FF9EC4 36%,#7C6CF0 68%,var(--navy) 100%)}
+.btn{border:var(--ol);box-shadow:0 4px 0 var(--ink)}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+.btn.main{background:var(--yellow);color:var(--ink);box-shadow:0 4px 0 var(--ink)}
+.btn.main:active{box-shadow:0 1px 0 var(--ink)}
+.btn.brand{background:var(--salmon-deep);color:#fff;box-shadow:0 4px 0 var(--ink)}
+.btn.quiet{background:#fff;color:var(--ink)}
+.btn.ghost{box-shadow:none}
+.dayhead .btn.ghost{border-color:#fff;color:#fff}
+.card,.deskrow,.pass,.install,.mode,.login{border:var(--ol);box-shadow:var(--shadow)}
+.card+.card{margin-top:20px}
+.castrow,.step,.ver{border:var(--ol)}
+.in,.code-in{border:var(--ol)}
+.chip{border:var(--ol)}
+.badge{border:var(--ol);box-shadow:3px 3px 0 var(--ink)}
+.bubble{border-width:3px}
+.tape-r{clip-path:none;border:2px solid var(--ink);border-radius:3px;box-shadow:2px 2px 0 var(--ink)}
+.lamp::before{border:2px solid var(--ink);box-shadow:none}
+.dayhead{background:var(--salmon-deep);border-bottom:3px solid var(--ink);box-shadow:none}
+.tabs a[aria-current]{border:3px solid var(--ink);border-bottom:0}
+.thumb{border:2px solid var(--ink)}
+.toast{border:2.5px solid #fff;box-shadow:4px 4px 0 rgba(0,0,0,.35)}
+.d-frame{outline:3px solid var(--ink)}
+.d-note{border:2px solid var(--ink)}
+.d-knob{border:2px solid var(--ink)}
+.d-name{border:2px solid var(--ink)}
+.cover{outline:2.5px solid var(--ink);outline-offset:0}
+.plate{border:var(--ol);box-shadow:3px 3px 0 var(--ink)}
+.addslot{border-width:3px}
+.install{background:#fff}
+.vnote{border:2px solid var(--ink)}
+.splash-in img{filter:drop-shadow(5px 5px 0 var(--ink))}
+
+/* ---------- 作品の楽屋：畳の部屋 ---------- */
+body.room-theme{color:var(--ink);background:
+  var(--tile,none) 0 0/360px 440px repeat,
+  linear-gradient(90deg,transparent calc(50% - 4px),#2F5A35 calc(50% - 4px),#2F5A35 calc(50% + 4px),transparent calc(50% + 4px)) 0 0/100% 100%,
+  repeating-linear-gradient(180deg,transparent 0 212px,#2F5A35 212px 220px),
+  repeating-linear-gradient(90deg,rgba(150,140,60,.18) 0 2px,transparent 2px 9px),
+  #D3CB79}
+body.room-theme::before{display:none}
+.roomhero{position:relative;height:min(78vw,460px);overflow:hidden;border-bottom:4px solid var(--ink);background:#E9DCC2}
+.roomhero .room{position:absolute;inset:0;width:100%;height:100%}
+.roomhero .pill{position:absolute;left:max(4vw,14px);top:calc(12px + env(safe-area-inset-top));z-index:2;display:inline-flex;align-items:center;min-height:42px;padding:0 14px;
+  background:#fff;color:var(--ink);border:var(--ol);border-radius:999px;box-shadow:3px 3px 0 var(--ink);font-weight:700;font-size:14px;text-decoration:none;opacity:1}
+.roomhero .badge{right:max(4vw,14px);top:calc(10px + env(safe-area-inset-top));transform:rotate(8deg);z-index:2}
+.sign{position:absolute;left:50%;top:30%;transform:translateX(-50%) rotate(-1.5deg);z-index:2;width:min(76%,520px);text-align:center;
+  background:#FFFDF6;border:3px solid var(--ink);border-radius:10px;padding:12px 16px 12px;box-shadow:6px 6px 0 var(--ink)}
+.sign::before,.sign::after{content:"";position:absolute;top:-34px;width:3px;height:34px;background:var(--ink)}
+.sign::before{left:22%}.sign::after{right:22%}
+.sign small{display:inline-block;font:700 12px/1 var(--f-body);letter-spacing:.24em;background:var(--salmon-deep);color:#fff;padding:5px 10px;border-radius:999px;border:2px solid var(--ink)}
+.sign h1{margin:8px 0 4px;font:400 clamp(20px,5.6vw,32px)/1.25 var(--f-pop);text-wrap:balance}
+.sign .meta{font-size:13px;color:var(--ink-2)}
+.tatami-in{padding-top:22px}
+.tatami-in .tapes{background:#FFFDF6;border:var(--ol);border-radius:12px;padding:10px 14px;box-shadow:4px 4px 0 var(--ink);display:inline-flex;margin-top:0}
+.tatami-in .tapes>span:first-child{opacity:1;font-weight:700}
+.tatami-in .hello{margin-top:16px}
+.modes{gap:18px}
+.mode{grid-template-columns:76px minmax(0,1fr)}
+.mode.m0{background:var(--yellow)}
+.mode.m1{background:#5BC0EB}
+.mode.m2{background:#7EE07E}
+.mode small{color:var(--ink)}
+.m-ico{display:flex;align-items:center;justify-content:center;width:76px;height:76px;border-radius:50%;background:#fff;border:var(--ol)}
+.m-ico .ico{width:56px;height:56px}
+.mode .soon{border:2px solid var(--ink);background:var(--tomato);box-shadow:2px 2px 0 var(--ink)}
+.tatami-in .sec-t{display:inline-block;background:var(--ink);color:#fff;padding:6px 14px;border-radius:10px;font-size:18px}
+.tatami-in .flowers{background:#FFFDF6;border:var(--ol);box-shadow:var(--shadow);border-style:solid}
+.tatami-in .flowers p{opacity:1}
+.tatami-in .foot{opacity:1}
+.toys{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 10px;margin:18px auto 10px;max-width:560px}
+.toy{position:relative;width:64px;height:64px;padding:0;border:0;background:none;transform:translateY(var(--y)) rotate(var(--t));cursor:pointer;
+  filter:drop-shadow(3px 3px 0 rgba(35,31,43,.28));-webkit-tap-highlight-color:transparent}
+.toy svg{width:100%;height:100%;display:block}
+.toy:focus-visible{outline:3px solid var(--ink);border-radius:12px}
+.toy.boing svg{animation:boing .55s cubic-bezier(.3,1.6,.5,1)}
+@keyframes boing{0%{transform:scale(1)}18%{transform:scale(1.22,.78)}38%{transform:scale(.86,1.16) rotate(-7deg)}58%{transform:scale(1.07,.94) rotate(5deg)}78%{transform:scale(.97,1.03)}100%{transform:scale(1)}}
+.toy-say{position:absolute;left:50%;bottom:calc(100% + 6px);transform:translateX(-50%) rotate(calc(var(--t) * -1));z-index:5;white-space:nowrap;
+  background:#fff;color:var(--ink);border:2.5px solid var(--ink);border-radius:12px;padding:4px 10px;font:400 13px/1.3 var(--f-hand);
+  box-shadow:3px 3px 0 var(--ink);animation:pop .25s cubic-bezier(.2,1.6,.4,1) both;pointer-events:none}
+@keyframes pop{from{opacity:0;transform:translateX(-50%) translateY(6px) scale(.7)}}
+.confetti{position:fixed;inset:0;z-index:90;pointer-events:none;overflow:hidden}
+.confetti i{position:absolute;top:-16px;width:9px;height:14px;border:1.5px solid var(--ink);border-radius:2px;animation:fall 2.2s cubic-bezier(.3,.2,.6,1) forwards}
+@keyframes fall{to{transform:translate(var(--dx),110vh) rotate(var(--r))}}
+
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
