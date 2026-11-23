@@ -781,3 +781,28 @@ body.print-theme{background:#fff;color:#111}
 @media print{.noprint{display:none!important}body{background:#fff}.printdoc{padding:0}}
 .pr-mine p{background:#FFF59A}
 @media screen and (max-width:600px){.pr-row{grid-template-columns:4.5em 1fr 2em}}
+/* 楽屋ボード */
+.card.board{margin-bottom:18px}
+.blist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.blist li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-radius:12px;background:#fffdf6;border:1px solid #eee3cc}
+.b-ico{font-size:22px}
+.b-t small{display:block;color:#888;font-size:12px}
+.clap{border:1px solid #e3dccb;background:#fff;border-radius:999px;padding:4px 10px;font:inherit;cursor:pointer}
+.clap.on{background:#FFF2CF}
+.clap:disabled{cursor:default}
+.b-foot{text-align:right;margin:10px 0 0}
+/* 覚えるの追加メニュー */
+.lmore{display:grid;gap:10px;margin:14px 0}
+.lmore a.mode{text-decoration:none;color:inherit}
+/* 声の差し入れ */
+.vlist{display:grid;gap:10px;margin-top:12px}
+.vrow{background:#FFFDF6;border:var(--ol);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+.vrow p{margin:0 0 8px;line-height:1.6}
+.vrow .acts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.vok{font-size:12px;color:#2f6b2f;background:#e6f3e6;border-radius:999px;padding:2px 10px}
+.btn.recording{background:#d33;color:#fff;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.6}}
+/* 道場 */
+.lrn-card.dojo{min-height:200px;text-align:center;align-items:center}
+.dj-res{font:400 30px/1.2 var(--f-pop);margin:0;color:#C2410C}
+.pe-ocr{margin-top:10px;padding-top:10px;border-top:1px dashed #d8cfb9}
