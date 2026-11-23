@@ -1,11 +1,14 @@
 /* もしょこむ楽屋：画面の部品を端末に保存し、電波がなくても開けるようにする。
    画面を更新したら VERSION の数字を1つ上げてください。 */
-const VERSION = 'gakuya-v0.5.0';
+const VERSION = 'gakuya-v0.6.0';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/logo.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(VERSION).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' }))))); /* すぐには切り替えない。画面の「切り替える」ボタンで切り替える */
+});
+self.addEventListener('message', e => {
+  if (e.data === 'skipWaiting') self.skipWaiting();
 });
 self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== VERSION && k !== 'gakuya-files').map(k => caches.delete(k))))
