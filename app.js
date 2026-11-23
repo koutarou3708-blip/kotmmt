@@ -1077,14 +1077,27 @@ function viewLines(scriptId) {
     var sc = r[0].filter(function (x) { return x.id === scriptId; })[0];
     if (!sc) throw { code: 'notfound', message: 'この台本は見つかりません' };
     document.getElementById('lnBack').href = '#/admin/roles/' + sc.workId;
-    return api('roles', { workId: sc.workId }).then(function (roles) { renderLines(sc, roles, r[1] ? r[1].lines : null); });
+    return api('roles', { workId: sc.workId }).then(function (roles) {
+      var lines = r[1] ? r[1].lines : null;
+      var mode = store.get('lnMode', '') || (window.innerWidth >= 900 ? 'pdf' : 'list');
+      if (mode === 'pdf') renderLinesPdf(sc, roles, lines || []); else renderLines(sc, roles, lines);
+    });
   }).catch(function (e) { if (!onAuthError(e, 'admin')) { var m = document.getElementById('ln'); if (m) m.innerHTML = '<div class="card">' + esc(e.message) + '</div>'; } });
+}
+function modeTabs(cur) {
+  return '<div class="lnmodes" role="tablist"><button class="rchip' + (cur === 'pdf' ? ' on' : '') + '" data-mode="pdf">台本の上で囲む（PC向け）</button>' +
+    '<button class="rchip' + (cur === 'list' ? ' on' : '') + '" data-mode="list">一覧で確かめる</button></div>';
+}
+function bindModeTabs(sc) {
+  var t = document.querySelector('.lnmodes'); if (!t) return;
+  t.onclick = function (e) { var b = e.target.closest('[data-mode]'); if (!b) return; store.set('lnMode', b.dataset.mode); window.onbeforeunload = null; viewLines(sc.id); };
 }
 function renderLines(sc, roles, lines) {
   var main = document.getElementById('ln'); if (!main) return;
-  var roleNames = roles.map(function (r) { return r.name; });
+  main.classList.remove('pdfmode');
+  var roleNames = roles.map(function (r) { return r.name; }); ROLE_ORDER = roleNames;
   if (!lines) {
-    main.innerHTML = '<section class="card"><h2>' + esc(sc.label) + (sc.status === 'final' ? '（確定版）' : '（下書き）') + '</h2>' +
+    main.innerHTML = modeTabs('list') + '<section class="card"><h2>' + esc(sc.label) + (sc.status === 'final' ? '（確定版）' : '（下書き）') + '</h2>' +
       '<p class="note">まだ割り振りがありません。AIが台本を頭から読んで、一行ずつ分けます。台本1冊で数分かかります。終わるまでこの画面を開いたままにしてください。</p>' +
       (roles.length ? '<p class="note">使う役：' + roleNames.map(esc).join('、') + '</p>' : '<p class="note warn">先に「登場人物」を登録しておくと、役名がそろって正確になります。</p>') +
       '<div class="aibox"><button class="btn brand" id="ruleLines">' + ART.sheep('happy') + '台本から割り振る</button>' +
@@ -1092,6 +1105,7 @@ function renderLines(sc, roles, lines) {
       '<button class="btn quiet sm" id="aiLines">AIで頭から割り振る（時間がかかります）</button><p class="note" id="aiSay"></p><div class="prog" hidden><i></i></div></div></section>';
     document.getElementById('aiLines').onclick = function () { runAiLines(sc, roleNames, this); };
     document.getElementById('ruleLines').onclick = function () { runRuleLines(sc, roleNames, this); };
+    bindModeTabs(sc);
     return;
   }
   var filter = 'all', scene = -1, dirty = false, timer = null, saving = false;
@@ -1106,7 +1120,7 @@ function renderLines(sc, roles, lines) {
     lines.forEach(function (l) { if (l.k === 'line') c.line++; if (l.q) c.q++; if (l.k === 'line' && !l.r) c.none++; });
     return c;
   };
-  main.innerHTML = '<div class="lnbar card"><div class="lnstat" id="lnStat"></div>' +
+  main.innerHTML = modeTabs('list') + '<div class="lnbar card"><div class="lnstat" id="lnStat"></div>' +
     '<div class="lnfilters" id="lnFilters"></div>' +
     '<div class="row lnscenes"><label class="sr" for="lnScene">場面</label><select class="in" id="lnScene"></select></div>' +
     '<div class="row"><button class="btn brand sm" id="lnAi">要確認をAIで見直す</button><button class="btn quiet sm" id="lnPdf">台本を開いて見比べる</button><button class="btn quiet sm" id="lnRedo">はじめからやり直す</button><span class="lnsave" id="lnSave"></span></div></div>' +
@@ -1247,13 +1261,216 @@ function renderLines(sc, roles, lines) {
       }
     };
   };
+  bindModeTabs(sc);
   draw();
 }
+var ROLE_ORDER = [];
 function roleColor(name) {
-  var cols = ['#FFB3C7', '#FFD23F', '#8FD3F4', '#9BE29B', '#C9B6FF', '#FFB980', '#7FE0D2', '#F4A6A6'];
+  var cols = ['#FFB3C7', '#8FD3F4', '#9BE29B', '#FFD23F', '#C9B6FF', '#FFB980', '#7FE0D2', '#F4A6A6', '#B8E0FF', '#E6C3A5'];
+  var k = ROLE_ORDER.indexOf(name); if (k >= 0) return cols[k % cols.length];
   var h = 0; String(name || '').split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
   return name ? cols[h % cols.length] : '#fff';
 }
+/* ===================== 台本の上で囲んで割り振る（PC向け） ===================== */
+function renderLinesPdf(sc, roles, lines) {
+  var main = document.getElementById('ln'); if (!main) return;
+  main.classList.add('pdfmode');
+  var roleNames = roles.map(function (r) { return r.name; }); ROLE_ORDER = roleNames;
+  var picks = roleNames.map(function (n) { return { k: 'line', r: n, label: n }; }).concat([{ k: 'dir', r: '', label: 'ト書き' }, { k: 'scene', r: '', label: '幕・場の見出し' }, { k: 'skip', r: '', label: '読まない' }]);
+  var lastNew = '', cur = 0, sel = -1, pageNo = 1, doc = null, vp = null, items = [], vertical = true, dirty = false, timer = null, saving = false, zoom = 1;
+  lines.forEach(function (l, i) { l._id = l._id || ('x' + i + '_' + Math.random().toString(36).slice(2, 6)); });
+  main.innerHTML = modeTabs('pdf') +
+    '<div class="pdfed">' +
+    '<div class="pe-left card"><div class="pe-bar"><button class="btn quiet sm" id="peePrev" aria-label="前のページ">◀</button><span id="pePage">-</span><button class="btn quiet sm" id="peNext" aria-label="次のページ">▶</button>' +
+    '<button class="btn quiet sm" id="peZo" aria-label="小さく">－</button><button class="btn quiet sm" id="peZi" aria-label="大きく">＋</button><span class="lnsave" id="lnSave"></span></div>' +
+    '<div class="pe-stage" id="peStage"><div class="pe-page" id="pePageBox"><canvas id="peCanvas"></canvas><div class="pe-over" id="peOver"></div></div></div></div>' +
+    '<div class="pe-right"><div class="card pe-pal"><h3>① だれのセリフ？</h3><div class="rolepick" id="pePal"></div>' +
+    '<p class="note">② 台本の上で、そのセリフをドラッグして四角で囲みます。<br>キーボードの数字（1〜9）でも役を選べます。囲んだ四角を押すと選べて、役の切り替え・文字の修正・削除（Delete キー）ができます。</p></div>' +
+    '<div class="card pe-sel" id="peSel" hidden></div>' +
+    '<div class="card pe-listc"><h3>割り振った行 <small id="peCount"></small></h3><div class="pe-list" id="peList"></div></div></div></div>';
+  var stage = document.getElementById('peStage'), canvas = document.getElementById('peCanvas'), over = document.getElementById('peOver');
+  var drawPal = function () {
+    document.getElementById('pePal').innerHTML = picks.map(function (p, i) {
+      return '<button class="rchip' + (i === cur ? ' on' : '') + '" data-pick="' + i + '" style="--c:' + (p.k === 'line' ? roleColor(p.r) : '#E7E1D4') + '">' + (i < 9 ? '<small>' + (i + 1) + '</small> ' : '') + esc(p.label) + '</button>';
+    }).join('');
+  };
+  var label = function (l) { return l.k === 'line' ? (l.r || '役？') : KIND_LABEL[l.k]; };
+  var color = function (l) { return l.k === 'line' ? roleColor(l.r) : l.k === 'scene' ? '#FFD23F' : '#CFC8B8'; };
+  /* 読む順：ページ → 縦書きなら右から左（同じ列なら上から）、横書きなら上から下 */
+  var orderKey = function (l) {
+    if (!l.box) return [1e6, 0, 0];
+    var b = l.box; return [l.p, l.v ? -b[2] : -b[3], l.v ? -b[3] : b[0]];
+  };
+  var sortLines = function () {
+    lines.sort(function (a, b) { var x = orderKey(a), y = orderKey(b); return x[0] - y[0] || (Math.abs(x[1] - y[1]) > 4 ? x[1] - y[1] : x[2] - y[2]); });
+  };
+  var save = function () {
+    dirty = true; document.getElementById('lnSave').textContent = '…';
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      if (saving) return save();
+      saving = true; dirty = false; document.getElementById('lnSave').textContent = '保存中…';
+      var clean = lines.map(function (l) { var o = { k: l.k, r: l.r, t: l.t, q: !!l.q }; if (l.box) { o.p = l.p; o.box = l.box; o.v = l.v; } return o; });
+      api('saveLines', { scriptId: sc.id, lines: clean }).then(function () {
+        saving = false; var el = document.getElementById('lnSave'); if (el) el.textContent = dirty ? '' : '保存しました';
+      }).catch(function (err) { saving = false; dirty = true; if (!onAuthError(err, 'admin')) toast('保存できませんでした：' + err.message); });
+    }, 1000);
+  };
+  window.onbeforeunload = function () { return dirty ? '保存されていない変更があります' : undefined; };
+  var drawBoxes = function () {
+    if (!vp) return;
+    over.innerHTML = lines.map(function (l, i) {
+      if (!l.box || l.p !== pageNo) return '';
+      var r = vp.convertToViewportRectangle(l.box), x = Math.min(r[0], r[2]), y = Math.min(r[1], r[3]);
+      return '<div class="pe-box' + (i === sel ? ' sel' : '') + (l._id === lastNew ? ' new' : '') + '" data-i="' + i + '" style="left:' + x + 'px;top:' + y + 'px;width:' + Math.abs(r[2] - r[0]) + 'px;height:' + Math.abs(r[3] - r[1]) + 'px;--c:' + color(l) + '"><b>' + esc(label(l)) + '</b></div>';
+    }).join('');
+  };
+  var drawList = function () {
+    var n = 0;
+    document.getElementById('peList').innerHTML = lines.map(function (l, i) {
+      if (l.k === 'line') n++;
+      return '<button class="pe-row' + (i === sel ? ' sel' : '') + (l._id === lastNew ? ' new' : '') + (l.k === 'scene' ? ' scene' : '') + '" data-i="' + i + '"><span class="lnchip" style="--c:' + color(l) + '">' + esc(label(l)) + '</span><span class="pe-t">' + esc(l.t) + '</span>' + (l.box ? '<small>p' + l.p + '</small>' : '<small>位置なし</small>') + '</button>';
+    }).join('') || '<p class="note">まだありません。役を選んで、台本の上を四角で囲んでください。</p>';
+    document.getElementById('peCount').textContent = 'セリフ ' + n + '／全部で ' + lines.length + ' 行';
+    var s2 = document.querySelector('.pe-row.sel') || document.querySelector('.pe-row.new'); if (s2) s2.scrollIntoView({ block: 'nearest' });
+  };
+  var drawSel = function () {
+    var box = document.getElementById('peSel'), l = lines[sel];
+    if (!l) { box.hidden = true; return; }
+    box.hidden = false;
+    box.innerHTML = '<h3>選んだ行</h3><textarea class="in" id="peText" rows="4">' + esc(l.t) + '</textarea>' +
+      '<p class="note">役を変えるときは、上の役のボタンを押します。</p><div class="row"><button class="btn quiet sm danger" id="peDel">この行を消す</button><button class="btn quiet sm" id="peDone">選ぶのをやめる</button></div>';
+    document.getElementById('peText').oninput = function () { l.t = this.value; drawList(); save(); };
+    document.getElementById('peDel').onclick = function () { lines.splice(sel, 1); sel = -1; redraw(); save(); };
+    document.getElementById('peDone').onclick = function () { sel = -1; redraw(); };
+  };
+  var redraw = function () { drawBoxes(); drawList(); drawSel(); drawPal(); };
+  var textItems = function () { return items; };
+  /* 四角の中の文字を、読む順に並べてつなげる */
+  var textIn = function (rect) {
+    var x0 = Math.min(rect[0], rect[2]), x1 = Math.max(rect[0], rect[2]), y0 = Math.min(rect[1], rect[3]), y1 = Math.max(rect[1], rect[3]);
+    var hit = textItems().filter(function (it) {
+      var tr = it.transform, s2 = Math.hypot(tr[0], tr[1]) || Math.hypot(tr[2], tr[3]) || 10;
+      var w = vertical ? s2 : (it.width || s2), h = vertical ? (it.height || s2) : s2;
+      var cx = tr[4] + w / 2, cy = vertical ? tr[5] + s2 / 2 - h / 2 + s2 / 2 : tr[5] + h / 3;
+      return cx >= x0 && cx <= x1 && cy >= y0 && cy <= y1;
+    });
+    if (vertical) {
+      var cols = [];
+      hit.forEach(function (it) {
+        var s2 = Math.hypot(it.transform[0], it.transform[1]) || 10, c = cols.filter(function (c) { return Math.abs(c.x - it.transform[4]) < s2 * 0.6; })[0];
+        if (!c) { c = { x: it.transform[4], list: [] }; cols.push(c); } c.list.push(it);
+      });
+      cols.sort(function (a, b) { return b.x - a.x; });
+      return fixGlyphs(cols.map(function (c) { return c.list.sort(function (a, b) { return b.transform[5] - a.transform[5]; }).map(function (it) { return it.str; }).join(''); }).join(''));
+    }
+    var rows = [];
+    hit.forEach(function (it) {
+      var s2 = Math.hypot(it.transform[0], it.transform[1]) || 10, r = rows.filter(function (r) { return Math.abs(r.y - it.transform[5]) < s2 * 0.6; })[0];
+      if (!r) { r = { y: it.transform[5], list: [] }; rows.push(r); } r.list.push(it);
+    });
+    rows.sort(function (a, b) { return b.y - a.y; });
+    return fixGlyphs(rows.map(function (r) { return r.list.sort(function (a, b) { return a.transform[4] - b.transform[4]; }).map(function (it) { return it.str; }).join(''); }).join(''));
+  };
+  /* 囲んだ文字の頭に役名があれば外す。「」も外す */
+  var cleanText = function (t, p) {
+    t = t.replace(/[\s　]+/g, '');
+    if (p.k === 'line') {
+      var n = [p.r].concat(roleNames).filter(function (x) { return x && t.indexOf(x) === 0; }).sort(function (a, b) { return b.length - a.length; })[0];
+      if (n) t = t.slice(n.length).replace(/^[：:]/, '');
+      t = t.replace(/^[（(][^）)]{1,20}[）)](?=「)/, '').replace(/^「/, '').replace(/」$/, '');
+    }
+    if (p.k === 'dir') t = t.replace(/^[（(]/, '').replace(/[）)]$/, '');
+    return t;
+  };
+  var showPage = function () {
+    if (!doc) return;
+    document.getElementById('pePage').textContent = pageNo + ' / ' + doc.numPages;
+    doc.getPage(pageNo).then(function (pg) {
+      var base = pg.getViewport({ scale: 1 });
+      var w = Math.max(320, stage.clientWidth - 8) * zoom;
+      vp = pg.getViewport({ scale: w / base.width });
+      var dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(vp.width * dpr); canvas.height = Math.floor(vp.height * dpr);
+      canvas.style.width = vp.width + 'px'; canvas.style.height = vp.height + 'px';
+      var box = document.getElementById('pePageBox'); box.style.width = vp.width + 'px'; box.style.height = vp.height + 'px';
+      var ctx = canvas.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return Promise.all([pg.render({ canvasContext: ctx, viewport: vp }).promise, pg.getTextContent()]).then(function (r) {
+        items = r[1].items.filter(function (it) { return it.str && it.transform; });
+        var down = 0, side = 0;
+        for (var i = 1; i < items.length; i++) {
+          var a = items[i - 1].transform, b = items[i].transform, h = Math.abs(a[3]) || Math.abs(a[0]) || 10;
+          if (Math.abs(a[4] - b[4]) < h * 0.6 && b[5] < a[5]) down++; else if (Math.abs(a[5] - b[5]) < h * 0.6 && b[4] > a[4]) side++;
+        }
+        vertical = down > side;
+        drawBoxes();
+      });
+    });
+  };
+  /* ドラッグで四角を描く */
+  var drag = null, ghost = null;
+  var pos = function (e) { var r = over.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  over.addEventListener('pointerdown', function (e) {
+    var b = e.target.closest('.pe-box');
+    if (b) { sel = +b.dataset.i; redraw(); return; }
+    if (!vp) return;
+    drag = pos(e); over.setPointerCapture(e.pointerId);
+    ghost = document.createElement('div'); ghost.className = 'pe-box ghost'; ghost.style.setProperty('--c', picks[cur].k === 'line' ? roleColor(picks[cur].r) : '#CFC8B8'); over.appendChild(ghost);
+  });
+  over.addEventListener('pointermove', function (e) {
+    if (!drag) return; var p2 = pos(e);
+    ghost.style.left = Math.min(drag[0], p2[0]) + 'px'; ghost.style.top = Math.min(drag[1], p2[1]) + 'px';
+    ghost.style.width = Math.abs(p2[0] - drag[0]) + 'px'; ghost.style.height = Math.abs(p2[1] - drag[1]) + 'px';
+  });
+  over.addEventListener('pointerup', function (e) {
+    if (!drag) return; var p2 = pos(e), a = drag; drag = null; if (ghost) ghost.remove();
+    if (Math.abs(p2[0] - a[0]) < 8 || Math.abs(p2[1] - a[1]) < 8) { sel = -1; redraw(); return; }
+    var q1 = vp.convertToPdfPoint(a[0], a[1]), q2 = vp.convertToPdfPoint(p2[0], p2[1]);
+    var rect = [Math.min(q1[0], q2[0]), Math.min(q1[1], q2[1]), Math.max(q1[0], q2[0]), Math.max(q1[1], q2[1])];
+    var pk = picks[cur], t = cleanText(textIn(rect), pk);
+    var l = { k: pk.k, r: pk.r, t: t || '（文字を読み取れませんでした。ここに書いてください）', q: !t, p: pageNo, box: rect.map(function (v) { return Math.round(v * 10) / 10; }), v: vertical, _id: 'n' + Date.now() };
+    /* 続けて次のセリフを囲めるように、選んだ状態にはしない（ひと目でわかるよう光らせる） */
+    lines.push(l); sortLines(); sel = -1; lastNew = l._id; redraw(); save();
+    if (!t) { sel = lines.indexOf(l); redraw(); }
+  });
+  document.getElementById('pePal').onclick = function (e) {
+    var b = e.target.closest('[data-pick]'); if (!b) return;
+    cur = +b.dataset.pick;
+    if (sel >= 0) { var l = lines[sel], pk = picks[cur]; l.k = pk.k; l.r = pk.r; l.q = false; save(); }
+    redraw();
+  };
+  document.getElementById('peList').onclick = function (e) {
+    var b = e.target.closest('.pe-row'); if (!b) return;
+    sel = +b.dataset.i; var l = lines[sel];
+    if (l.box && l.p !== pageNo) { pageNo = l.p; showPage(); }
+    redraw();
+  };
+  var keyH = function (e) {
+    if (!document.getElementById('peStage')) { document.removeEventListener('keydown', keyH); return; }
+    if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+    if (/^[1-9]$/.test(e.key) && picks[+e.key - 1]) { cur = +e.key - 1; if (sel >= 0) { var l = lines[sel]; l.k = picks[cur].k; l.r = picks[cur].r; l.q = false; save(); } redraw(); }
+    if ((e.key === 'Delete' || e.key === 'Backspace') && sel >= 0) { e.preventDefault(); lines.splice(sel, 1); sel = -1; redraw(); save(); }
+    if (e.key === 'ArrowRight' || e.key === 'PageDown') { if (doc && pageNo < doc.numPages) { pageNo++; showPage(); } }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { if (pageNo > 1) { pageNo--; showPage(); } }
+    if (e.key === 'Escape') { sel = -1; redraw(); }
+  };
+  document.addEventListener('keydown', keyH);
+  document.getElementById('peePrev').onclick = function () { if (pageNo > 1) { pageNo--; showPage(); } };
+  document.getElementById('peNext').onclick = function () { if (doc && pageNo < doc.numPages) { pageNo++; showPage(); } };
+  document.getElementById('peZi').onclick = function () { zoom = Math.min(3, zoom + 0.25); showPage(); };
+  document.getElementById('peZo').onclick = function () { zoom = Math.max(0.5, zoom - 0.25); showPage(); };
+  bindModeTabs(sc);
+  sortLines(); redraw();
+  stage.insertAdjacentHTML('afterbegin', '<div class="pe-loading">' + loading() + '</div>');
+  scriptBlob(sc).then(function (blob) { return loadPdfJs().then(function (lib) { return blob.arrayBuffer().then(function (buf) { return lib.getDocument({ data: new Uint8Array(buf), cMapUrl: PDFJS + 'cmaps/', cMapPacked: true, standardFontDataUrl: PDFJS + 'standard_fonts/' }).promise; }); }); })
+    .then(function (d) { doc = d; var ld = stage.querySelector('.pe-loading'); if (ld) ld.remove(); showPage(); })
+    .catch(function (err) { stage.innerHTML = '<p class="note">' + esc(err.message || '台本を開けませんでした') + '</p>'; });
+}
+function fixGlyphs(t) {
+  var SUP = { '⺟': '母', '⻁': '虎', '⻄': '西', '⻆': '角', '⻑': '長', '⻘': '青', '⻝': '食', '⻤': '鬼', '⻩': '黄', '⻲': '亀', '⻭': '歯', '⻯': '竜', '⻞': '飛', '⻨': '麦', '⻫': '斉', '⻬': '斎', '⻰': '龍', '⻳': '亀' };
+  return t.replace(/[⺀-⿟︐-︟︰-﹏]/g, function (c) { return SUP[c] || c.normalize('NFKC'); });
+}
+
 /* 台本の形（役名「…」／役名　セリフ／（ト書き））から、すぐに一行ずつ分ける */
 var SCENE_RE = /^(第?[一二三四五六七八九十百〇0-9０-９]+[幕場景章]|[一二三四五六七八九十0-9０-９]+[幕場]|序幕|終幕|プロローグ|エピローグ|幕間|シーン\s*[0-9０-９一二三四五六七八九十]+|[#＃]\s*[0-9０-９]+|[SsＳ]\s*[0-9０-９]+\s|[MmＭ]\s*[0-9０-９]+\s)/;
 function splitByRules(pages, roleNames) {

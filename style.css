@@ -604,3 +604,36 @@ body.noscroll{overflow:hidden}
 .lnbar{position:static}
 .lnbar .row{flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:4px}
 .lnbar .row .btn{flex:none}
+/* 台本の上で囲む（PC向け） */
+.lines-wrap.pdfmode{max-width:none;padding-left:16px;padding-right:16px}
+.lnmodes{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.pdfed{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:14px;align-items:start}
+@media (max-width:899px){.pdfed{grid-template-columns:1fr}}
+.pe-left{padding:10px}
+.pe-bar{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.pe-bar #pePage{font-weight:700;min-width:64px;text-align:center}
+.pe-stage{position:relative;overflow:auto;max-height:calc(100vh - 210px);background:#3a3644;border-radius:10px;padding:4px}
+.pe-page{position:relative;margin:0 auto;background:#fff}
+.pe-page canvas{display:block}
+.pe-over{position:absolute;inset:0;cursor:crosshair;touch-action:none}
+.pe-box{position:absolute;border:3px solid var(--ink);background:color-mix(in srgb,var(--c) 35%,transparent);border-radius:6px;cursor:pointer}
+.pe-box b{position:absolute;left:-3px;top:-24px;background:var(--c);border:2px solid var(--ink);border-radius:6px;padding:1px 6px;font:700 12px/1.4 var(--f-body);white-space:nowrap}
+.pe-box.sel{outline:4px solid var(--salmon-deep);outline-offset:2px;z-index:2}
+.pe-box.ghost{pointer-events:none;border-style:dashed}
+.pe-right{display:grid;gap:12px;position:sticky;top:12px}
+.pe-right h3{margin:0 0 8px;font-size:15px}
+.pe-pal .rchip{background:var(--c)}
+.pe-pal .rchip.on{outline:3px solid var(--ink);outline-offset:2px}
+.pe-pal .rchip small{opacity:.6}
+.pe-list{max-height:calc(100vh - 470px);min-height:160px;overflow:auto;display:grid;gap:4px}
+.pe-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;text-align:left;background:#fff;border:1.5px solid var(--line);border-radius:10px;padding:6px 8px;font:inherit;color:var(--ink);cursor:pointer}
+.pe-row.sel{border:2.5px solid var(--salmon-deep)}
+.pe-row.scene{background:var(--navy);color:#fff}
+.pe-row .lnchip{min-width:52px;min-height:28px;font-size:12px;box-shadow:none}
+.pe-t{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pe-row small{color:var(--ink-2);font-size:11px}
+.pe-loading{position:absolute;inset:0;display:grid;place-items:center}
+.pe-box.new{animation:pnew .9s ease-out}
+.pe-row.new{background:#FFF3C9}
+@keyframes pnew{0%{transform:scale(1.06);box-shadow:0 0 0 8px var(--c)}100%{transform:none;box-shadow:none}}
+.pe-row.scene.new{background:var(--navy);outline:3px solid var(--yellow)}
