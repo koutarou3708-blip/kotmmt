@@ -600,3 +600,7 @@ body.noscroll{overflow:hidden}
 .rchip:disabled{opacity:.4}
 .lnsheet .pass{max-height:78vh;overflow:auto;padding-top:20px}
 .lnsheet .pass::before{display:none}
+.lnscenes select{max-width:100%}
+.lnbar{position:static}
+.lnbar .row{flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:4px}
+.lnbar .row .btn{flex:none}

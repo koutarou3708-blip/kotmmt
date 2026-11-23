@@ -85,7 +85,7 @@ var ART = {
 /* ===================== API ===================== */
 var ADMIN_ACTIONS = ['desk', 'saveWork', 'uploadPoster', 'cast', 'saveActor', 'reissueCode', 'setActorActive', 'deleteActor',
   'shelf', 'saveScriptNote', 'setScriptStatus', 'startUpload', 'uploadChunk', 'downloadChunk',
-  'roles', 'saveRole', 'deleteRole', 'aiRoles', 'audios', 'saveAudioNote', 'deleteAudio', 'setAdminCode', 'aiLines', 'saveLines', 'lines'];
+  'roles', 'saveRole', 'deleteRole', 'aiRoles', 'audios', 'saveAudioNote', 'deleteAudio', 'setAdminCode', 'aiLines', 'aiCheck', 'saveLines', 'lines'];
 var WRITES = ['saveWork', 'uploadPoster', 'saveActor', 'reissueCode', 'setActorActive', 'deleteActor', 'saveScriptNote', 'setScriptStatus', 'uploadChunk',
   'saveRole', 'deleteRole', 'aiRoles', 'saveAudioNote', 'deleteAudio', 'saveLines'];
 function api(action, payload) {
@@ -1025,7 +1025,8 @@ function pageText(tc) {
   var items = tc.items.filter(function (it) { return it.str && it.transform; });
   var fix = function (t) {
     /* 縦書き用の記号（﹁︑︒など）や部首の字（⼀⽇など）を、ふつうの字にそろえる */
-    return t.replace(/[\u2E80-\u2FDF\uFE10-\uFE1F\uFE30-\uFE4F]/g, function (c) { return c.normalize('NFKC'); });
+    var SUP = { '⺟': '母', '⻁': '虎', '⻄': '西', '⻆': '角', '⻑': '長', '⻘': '青', '⻝': '食', '⻤': '鬼', '⻩': '黄', '⻲': '亀', '⻭': '歯', '⻯': '竜', '⻞': '飛', '⻨': '麦', '⻫': '斉', '⻬': '斎', '⻰': '龍', '⻳': '亀' };
+    return t.replace(/[\u2E80-\u2FDF\uFE10-\uFE1F\uFE30-\uFE4F]/g, function (c) { return SUP[c] || c.normalize('NFKC'); });
   };
   var flat = function () { return fix(items.map(function (it) { return it.str + (it.hasEOL ? '\n' : ''); }).join('')); };
   if (items.length < 8) return flat();
@@ -1086,11 +1087,15 @@ function renderLines(sc, roles, lines) {
     main.innerHTML = '<section class="card"><h2>' + esc(sc.label) + (sc.status === 'final' ? '（確定版）' : '（下書き）') + '</h2>' +
       '<p class="note">まだ割り振りがありません。AIが台本を頭から読んで、一行ずつ分けます。台本1冊で数分かかります。終わるまでこの画面を開いたままにしてください。</p>' +
       (roles.length ? '<p class="note">使う役：' + roleNames.map(esc).join('、') + '</p>' : '<p class="note warn">先に「登場人物」を登録しておくと、役名がそろって正確になります。</p>') +
-      '<div class="aibox"><button class="btn brand" id="aiLines">' + ART.sheep('happy') + 'AIでセリフを割り振る</button><p class="note" id="aiSay"></p><div class="prog" hidden><i></i></div></div></section>';
+      '<div class="aibox"><button class="btn brand" id="ruleLines">' + ART.sheep('happy') + '台本から割り振る</button>' +
+      '<p class="note">役名と「」、（ ）の形から、すぐに一行ずつ分けます。迷った行には印が付くので、あとでAIに見直してもらえます。</p>' +
+      '<button class="btn quiet sm" id="aiLines">AIで頭から割り振る（時間がかかります）</button><p class="note" id="aiSay"></p><div class="prog" hidden><i></i></div></div></section>';
     document.getElementById('aiLines').onclick = function () { runAiLines(sc, roleNames, this); };
+    document.getElementById('ruleLines').onclick = function () { runRuleLines(sc, roleNames, this); };
     return;
   }
-  var filter = 'all', dirty = false, timer = null, saving = false;
+  var filter = 'all', scene = -1, dirty = false, timer = null, saving = false;
+  var sceneOf = function () { var cur = -1, out = []; lines.forEach(function (l, i) { if (l.k === 'scene') cur = i; out.push(cur); }); return out; };
   var names = function () {
     var extra = [];
     lines.forEach(function (l) { if (l.k === 'line' && l.r && roleNames.indexOf(l.r) < 0 && extra.indexOf(l.r) < 0) extra.push(l.r); });
@@ -1103,7 +1108,8 @@ function renderLines(sc, roles, lines) {
   };
   main.innerHTML = '<div class="lnbar card"><div class="lnstat" id="lnStat"></div>' +
     '<div class="lnfilters" id="lnFilters"></div>' +
-    '<div class="row"><button class="btn quiet sm" id="lnPdf">台本を開いて見比べる</button><button class="btn quiet sm" id="lnRedo">AIでやり直す</button><span class="lnsave" id="lnSave"></span></div></div>' +
+    '<div class="row lnscenes"><label class="sr" for="lnScene">場面</label><select class="in" id="lnScene"></select></div>' +
+    '<div class="row"><button class="btn brand sm" id="lnAi">要確認をAIで見直す</button><button class="btn quiet sm" id="lnPdf">台本を開いて見比べる</button><button class="btn quiet sm" id="lnRedo">はじめからやり直す</button><span class="lnsave" id="lnSave"></span></div></div>' +
     '<div class="lnlist" id="lnList"></div>';
   var list = document.getElementById('lnList');
   var chip = function (l) {
@@ -1113,13 +1119,22 @@ function renderLines(sc, roles, lines) {
   var row = function (l, i) {
     return '<div class="ln k-' + l.k + (l.q ? ' q' : '') + '" data-i="' + i + '">' + chip(l) + '<p class="lt" data-edit>' + esc(l.t) + '</p>' + (l.q ? '<span class="qmark" title="AIが迷った行">要確認</span>' : '') + '</div>';
   };
-  var shown = function (l) {
+  var sc0 = sceneOf();
+  var shown = function (l, i) {
+    if (scene >= 0 && sc0[i] !== scene) return false;
     if (filter === 'all') return true;
     if (filter === 'q') return l.q || (l.k === 'line' && !l.r);
     return l.k === 'line' && l.r === filter;
   };
+  var drawScenes = function () {
+    var sel = document.getElementById('lnScene'), opts = '<option value="-1">すべての場面（幕・場）</option>';
+    lines.forEach(function (l, i) { if (l.k === 'scene') opts += '<option value="' + i + '"' + (scene === i ? ' selected' : '') + '>' + esc(l.t.slice(0, 24)) + '</option>'; });
+    sel.innerHTML = opts; sel.parentNode.hidden = !lines.some(function (l) { return l.k === 'scene'; });
+  };
   var drawStat = function () {
     var c = counts(), n = names();
+    var ai = document.getElementById('lnAi'); ai.textContent = '要確認をAIで見直す（' + (c.q + c.none) + '行）'; ai.disabled = !(c.q + c.none);
+    drawScenes();
     document.getElementById('lnStat').innerHTML = 'セリフ <b>' + c.line + '</b>　全部で ' + lines.length + ' 行' + (c.q + c.none ? '　<span class="qmark">要確認 ' + (c.q + c.none) + '</span>' : '　<span class="okmark">確認済み</span>');
     document.getElementById('lnFilters').innerHTML = '<button class="rchip' + (filter === 'all' ? ' on' : '') + '" data-f="all">すべて</button>' +
       '<button class="rchip' + (filter === 'q' ? ' on' : '') + '" data-f="q">要確認だけ</button>' +
@@ -1128,7 +1143,8 @@ function renderLines(sc, roles, lines) {
   };
   var draw = function () {
     var html = '';
-    lines.forEach(function (l, i) { if (shown(l)) html += row(l, i); });
+    sc0 = sceneOf();
+    lines.forEach(function (l, i) { if (shown(l, i)) html += row(l, i); });
     list.innerHTML = html || '<p class="note">この条件の行はありません。</p>';
     drawStat();
   };
@@ -1149,6 +1165,37 @@ function renderLines(sc, roles, lines) {
   };
   var changed = function (i) { dirty = true; document.getElementById('lnSave').textContent = '…'; if (i >= 0) redrawRow(i); else draw(); save(); };
   window.onbeforeunload = function () { return dirty ? '保存されていない変更があります' : undefined; };
+  document.getElementById('lnScene').onchange = function () { scene = +this.value; draw(); window.scrollTo(0, 0); };
+  document.getElementById('lnAi').onclick = function () {
+    var b = this, todo = [];
+    lines.forEach(function (l, i) { if (l.q || (l.k === 'line' && !l.r)) todo.push(i); });
+    if (!todo.length) return;
+    b.disabled = true;
+    var batches = []; for (var k = 0; k < todo.length; k += 40) batches.push(todo.slice(k, k + 40));
+    var n = 0, fixed = 0;
+    var next = function () {
+      if (n >= batches.length) return Promise.resolve();
+      b.textContent = 'AIが見直しています（' + (n + 1) + ' / ' + batches.length + '）…';
+      var items = batches[n].map(function (i) {
+        return { i: i, target: lines[i].t, before: i ? (lines[i - 1].r ? lines[i - 1].r + '：' : '') + lines[i - 1].t.slice(-60) : '', after: lines[i + 1] ? lines[i + 1].t.slice(0, 60) : '' };
+      });
+      return api('aiCheck', { items: items, roles: roleNames }).then(function (res) {
+        res.forEach(function (x) {
+          var l = lines[x.i]; if (!l || x.k === 'join') return;
+          l.k = ['line', 'dir', 'scene', 'skip'].indexOf(x.k) >= 0 ? x.k : l.k; l.r = l.k === 'line' ? (x.r || l.r) : ''; l.q = l.k === 'line' && !l.r; fixed++;
+        });
+        /* 「前の行の続き」と言われた行は、後ろからつなげる（番号がずれないように） */
+        res.filter(function (x) { return x.k === 'join' && x.i > 0 && lines[x.i]; }).sort(function (a, b2) { return b2.i - a.i; }).forEach(function (x) {
+          lines[x.i - 1].t += lines[x.i].t; lines.splice(x.i, 1); fixed++;
+          batches.forEach(function (bt) { for (var q = 0; q < bt.length; q++) if (bt[q] > x.i) bt[q]--; });
+        });
+        n++; return next();
+      });
+    };
+    next().then(function () { toast(fixed + '行を見直しました'); changed(-1); })
+      .catch(function (err) { if (!onAuthError(err, 'admin')) toast(err.message); changed(-1); })
+      .then(function () { drawStat(); });
+  };
   document.getElementById('lnFilters').onclick = function (e) { var b = e.target.closest('[data-f]'); if (!b) return; filter = b.dataset.f; draw(); window.scrollTo(0, 0); };
   document.getElementById('lnPdf').onclick = function () {
     var b = this; b.disabled = true;
@@ -1156,7 +1203,7 @@ function renderLines(sc, roles, lines) {
   };
   document.getElementById('lnRedo').onclick = function () {
     var b = this;
-    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = '今の割り振りが消えます。もう一度押す'; setTimeout(function () { if (b.isConnected) { b.dataset.sure = ''; b.textContent = 'AIでやり直す'; } }, 4000); return; }
+    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = '今の割り振りが消えます。もう一度押す'; setTimeout(function () { if (b.isConnected) { b.dataset.sure = ''; b.textContent = 'はじめからやり直す'; } }, 4000); return; }
     renderLines(sc, roles, null);
   };
   list.onclick = function (e) {
@@ -1206,6 +1253,58 @@ function roleColor(name) {
   var cols = ['#FFB3C7', '#FFD23F', '#8FD3F4', '#9BE29B', '#C9B6FF', '#FFB980', '#7FE0D2', '#F4A6A6'];
   var h = 0; String(name || '').split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
   return name ? cols[h % cols.length] : '#fff';
+}
+/* 台本の形（役名「…」／役名　セリフ／（ト書き））から、すぐに一行ずつ分ける */
+var SCENE_RE = /^(第?[一二三四五六七八九十百〇0-9０-９]+[幕場景章]|[一二三四五六七八九十0-9０-９]+[幕場]|序幕|終幕|プロローグ|エピローグ|幕間|シーン\s*[0-9０-９一二三四五六七八九十]+|[#＃]\s*[0-9０-９]+|[SsＳ]\s*[0-9０-９]+\s|[MmＭ]\s*[0-9０-９]+\s)/;
+function splitByRules(pages, roleNames) {
+  var names = roleNames.slice().sort(function (a, b) { return b.length - a.length; });
+  var out = [], prev = null, open = false;
+  /* 役名のすぐあとが「が・は・を…」なら、ト書きの中の名前（例：ソラがメイクをしている） */
+  var PARTICLE = /^[がはをにのともへでやかよねっ、。]/;
+  pages.join('\n').split('\n').forEach(function (raw) {
+    var t = raw.replace(/^[　\s]+|[　\s]+$/g, '');
+    if (!t) return;
+    if (/^[-－―\s]*[0-9０-９]{1,3}[-－―\s]*$/.test(t)) return;                     /* ページ番号 */
+    var endsOpen = !/[。」』！？!?）)…]$/.test(t);
+    if (t.length <= 30 && SCENE_RE.test(t)) { out.push(prev = { k: 'scene', r: '', t: t.replace(/[　\s]+/g, ' '), q: false }); open = false; return; }
+    /* 折り返し・改ページで切れた続き（前の行が終わっていない） */
+    if (prev && open && (prev.k === 'line' || prev.k === 'dir')) {
+      prev.t += t.replace(/[」）)]$/, ''); open = endsOpen; return;
+    }
+    var who = names.filter(function (n) {
+      if (t.indexOf(n) !== 0) return false;
+      var rest = t.slice(n.length);
+      return !rest || /^[\s　「『：:（(]/.test(rest) || !PARTICLE.test(rest);
+    })[0];
+    if (who) {
+      var body = t.slice(who.length).replace(/^[\s　：:]+/, '');
+      var m = body.match(/^[（(][^）)]{1,20}[）)]\s*/); if (m && body.charAt(m[0].length) === '「') body = body.slice(m[0].length);
+      out.push(prev = { k: 'line', r: who, t: body.replace(/^「/, '').replace(/」$/, ''), q: !body });
+      open = endsOpen; return;
+    }
+    if (/^[（(]/.test(t)) { out.push(prev = { k: 'dir', r: '', t: t.replace(/^[（(]/, '').replace(/[）)]$/, ''), q: false }); open = endsOpen; return; }
+    var other = t.match(/^([^\s　「」（）()]{1,8})[\s　]*「/);
+    if (other) { out.push(prev = { k: 'line', r: other[1], t: t.slice(other[0].length).replace(/」$/, ''), q: true }); open = endsOpen; return; }
+    out.push(prev = { k: 'dir', r: '', t: t, q: true }); open = endsOpen;
+  });
+  return out;
+}
+function runRuleLines(sc, roleNames, btn) {
+  var box = btn.parentNode, bar = box.querySelector('.prog'), say = document.getElementById('aiSay');
+  btn.disabled = true; bar.hidden = false; bar.firstChild.style.width = '5%'; say.textContent = '台本を開いています…';
+  scriptBlob(sc, function (r) { bar.firstChild.style.width = Math.round(5 + r * 45) + '%'; })
+    .then(function (blob) { say.textContent = '台本の文字を読み取っています…'; return pdfPages(blob); })
+    .then(function (pages) {
+      var lines = splitByRules(pages, roleNames);
+      if (!lines.length) throw { message: '台本から文字を読み取れませんでした（画像だけのPDFかもしれません）' };
+      bar.firstChild.style.width = '90%'; say.textContent = '保存しています…';
+      return api('saveLines', { scriptId: sc.id, lines: lines }).then(function () { return lines; });
+    })
+    .then(function (lines) {
+      var q = lines.filter(function (l) { return l.q; }).length;
+      toast(lines.length + '行に分けました' + (q ? '。要確認は ' + q + '行です' : '')); viewLines(sc.id);
+    })
+    .catch(function (err) { btn.disabled = false; bar.hidden = true; if (!onAuthError(err, 'admin')) say.textContent = err.message || 'うまくいきませんでした'; });
 }
 function runAiLines(sc, roleNames, btn) {
   var box = btn.parentNode, bar = box.querySelector('.prog'), say = document.getElementById('aiSay');
@@ -1611,6 +1710,15 @@ function bindInstall() {
 }
 if ('serviceWorker' in navigator && MODE !== 'gas' && location.protocol === 'https:' && !window.NO_SW) {
   window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () { }); });
+  /* 新しい版が届いたら、すぐに切り替える（入力中でなければ） */
+  var hadController = !!navigator.serviceWorker.controller, reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!hadController || reloaded) return;
+    var a = document.activeElement;
+    if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
+    if (player.audio && !player.audio.paused) return;
+    reloaded = true; location.reload();
+  });
 }
 
 /* ===================== デモ（GASの外で開いたとき） ===================== */
@@ -1691,6 +1799,7 @@ var DEMO = {
           if (/^第.+場/.test(ln)) return { k: 'scene', r: '', t: ln, q: false };
           return { k: 'dir', r: '', t: ln.replace(/^（ト書き）/, ''), q: !/^（/.test(ln) };
         }).filter(Boolean));
+      case 'aiCheck': return ok((p.items || []).map(function (x) { return { i: x.i, k: 'dir', r: '' }; }));
       case 'saveLines': db.lines = db.lines || {}; db.lines[p.scriptId] = p.lines; self.save(); return ok({ scriptId: p.scriptId, count: p.lines.length });
       case 'lines': db.lines = db.lines || {}; return ok(db.lines[p.scriptId] ? { scriptId: p.scriptId, lines: db.lines[p.scriptId] } : null);
       case 'audios': return ok(db.audios.filter(function (x) { return x.workId === p.workId; }));
