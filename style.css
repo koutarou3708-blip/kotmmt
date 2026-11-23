@@ -561,3 +561,42 @@ body.noscroll{overflow:hidden}
 .rolerow .acts{flex:none}
 .rolerow:has(form){flex-wrap:wrap}
 .tatami-in>.note{background:#FFFDF6;border:var(--ol);border-radius:12px;padding:10px 14px;color:var(--ink)}
+/* v0.3.1：楽屋の看板が「楽屋口へ」と日付に重ならないように */
+.roomhero{height:calc(min(78vw,460px) + env(safe-area-inset-top))}
+.roomhero .pill,.roomhero .badge{z-index:4}
+.sign{top:calc(env(safe-area-inset-top) + 74px)}
+.sign h1{font-size:clamp(19px,5.2vw,30px);word-break:auto-phrase}
+/* セリフの割り振り */
+.scriptpick{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.note.warn{background:#FFF3C9;border-radius:8px;padding:6px 10px}
+.lnbar{position:sticky;top:calc(64px + env(safe-area-inset-top));z-index:5;display:grid;gap:8px;padding:12px}
+.lnstat{font-size:14px}
+.lnstat b{font-size:18px}
+.lnfilters{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;flex-wrap:nowrap}
+.lnfilters .rchip{flex:none;min-height:34px;font-size:13px}
+.lnfilters .note{flex:none;margin:0;white-space:nowrap}
+.lnsave{font-size:12.5px;color:var(--ink-2);margin-left:auto;align-self:center}
+.qmark{display:inline-block;background:var(--yellow);border:2px solid var(--ink);border-radius:999px;padding:1px 8px;font:700 11.5px/1.5 var(--f-body)}
+.okmark{display:inline-block;background:#9BE29B;border:2px solid var(--ink);border-radius:999px;padding:1px 8px;font:700 11.5px/1.5 var(--f-body)}
+.lnlist{display:grid;gap:6px;margin-top:12px;padding-bottom:40px}
+.ln{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:start;background:#fff;border:2px solid var(--ink);border-radius:12px;padding:8px 10px}
+.ln.k-dir{background:#F4F1EA;border-style:dashed}
+.ln.k-dir .lt{color:var(--ink-2);font-size:14px}
+.ln.k-scene{background:var(--navy);color:#fff}
+.ln.k-scene .lt{font:400 16px/1.5 var(--f-pop)}
+.ln.k-skip{opacity:.45}
+.ln.q{box-shadow:0 0 0 3px var(--yellow)}
+.ln .lt{margin:2px 0 0;line-height:1.7;white-space:pre-wrap;cursor:text;min-width:0;overflow-wrap:anywhere}
+.lnchip{min-width:64px;max-width:120px;min-height:34px;padding:0 10px;border-radius:999px;border:2px solid var(--ink);background:var(--c,#fff);font:700 13px/1.2 var(--f-body);color:var(--ink);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:2px 2px 0 var(--ink)}
+.lnchip.k-dir{background:#E7E1D4}
+.lnchip.k-scene{background:var(--yellow)}
+.lnchip.k-skip{background:#ddd}
+.lnedit{grid-column:2/-1;width:100%;font-size:15px;line-height:1.6}
+.lnsheet h3{font-size:14px;margin:14px 0 8px}
+.lnsheet .rchip[style]{background:var(--c)}
+.lnsheet .rchip.on{outline:3px solid var(--ink);outline-offset:1px}
+.lnq{background:#F4F1EA;border-radius:10px;padding:8px 10px;margin:0;font-size:14px}
+.rchip.danger{color:var(--salmon-deep)}
+.rchip:disabled{opacity:.4}
+.lnsheet .pass{max-height:78vh;overflow:auto;padding-top:20px}
+.lnsheet .pass::before{display:none}

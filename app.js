@@ -85,9 +85,9 @@ var ART = {
 /* ===================== API ===================== */
 var ADMIN_ACTIONS = ['desk', 'saveWork', 'uploadPoster', 'cast', 'saveActor', 'reissueCode', 'setActorActive', 'deleteActor',
   'shelf', 'saveScriptNote', 'setScriptStatus', 'startUpload', 'uploadChunk', 'downloadChunk',
-  'roles', 'saveRole', 'deleteRole', 'aiRoles', 'audios', 'saveAudioNote', 'deleteAudio', 'setAdminCode'];
+  'roles', 'saveRole', 'deleteRole', 'aiRoles', 'audios', 'saveAudioNote', 'deleteAudio', 'setAdminCode', 'aiLines', 'saveLines', 'lines'];
 var WRITES = ['saveWork', 'uploadPoster', 'saveActor', 'reissueCode', 'setActorActive', 'deleteActor', 'saveScriptNote', 'setScriptStatus', 'uploadChunk',
-  'saveRole', 'deleteRole', 'aiRoles', 'saveAudioNote', 'deleteAudio'];
+  'saveRole', 'deleteRole', 'aiRoles', 'saveAudioNote', 'deleteAudio', 'saveLines'];
 function api(action, payload) {
   return rawApi(action, payload).then(function (d) {
     if (WRITES.indexOf(action) >= 0) clearReads();
@@ -541,7 +541,7 @@ function renderHome(r) {
   app.querySelector('.modes').onclick = function (e) {
     var b = e.target.closest('.mode'); if (!b) return;
     var m = b.dataset.mode;
-    if (m === 'learn' || m === 'drive') { toast('セリフの割り振りができると使えます。いま舞台監督が準備しています'); return; }
+    if (m === 'learn' || m === 'drive') { toast(r.linesAt ? 'セリフの割り振りは届いています。練習の画面はもうすぐ使えます' : 'セリフの割り振りができると使えます。いま舞台監督が準備しています'); return; }
     if (m === 'listen') { if (hasAudio) go('/w/' + w.id + '/listen'); else toast('読み合わせの録音が届くと使えます'); return; }
     if (m === 'script') {
       if (!hasScript) { toast('確定版の台本が届くと開けます'); return; }
@@ -953,7 +953,13 @@ function renderRoles(w, roles, scripts) {
     '<form class="form addrole" id="addRole"><div class="two"><label class="f">役の名前<input class="in" name="rname" required placeholder="ソラ"></label>' +
     '<label class="f">メモ<input class="in" name="rnote" placeholder="高校2年生・ハルの幼なじみ"></label></div>' +
     '<div class="row end"><button class="btn main">＋ 役を追加</button></div></form></section>' +
-    '<section class="card"><h2>セリフの割り振り</h2><p class="note">次の段階で、AIが台本のセリフを役ごとに分け、それを台本を追いながら確認・修正できるようにします。割り振りが終わると、劇団員の「覚える」「運転中」が使えるようになります。</p></section>';
+    '<section class="card"><h2>セリフの割り振り</h2>' +
+    (scripts.length ? '<p class="note" style="margin:-4px 0 12px">AIが台本を一行ずつ「だれのセリフか／ト書きか」に分けます。そのあと、台本を追いながら確認・修正します。確定版の割り振りができると、劇団員の「覚える」「運転中」で使われます。</p>' +
+      '<div class="scriptpick">' + scripts.slice().sort(function (a, b) { return (a.status === 'final' ? -1 : 0) - (b.status === 'final' ? -1 : 0) || b.version - a.version; })
+        .filter(function (x) { return x.status !== 'past'; }).map(function (x) {
+          return '<a class="btn ' + (x.status === 'final' ? 'brand' : 'quiet') + '" href="#/admin/lines/' + esc(x.id) + '">' + esc(x.label) + (x.status === 'final' ? '（確定版）' : '（下書き）') + 'の割り振り →</a>';
+        }).join('') + '</div>'
+      : '<p class="note">先に①で台本PDFを入れてください。</p>') + '</section>';
   var list = document.getElementById('roleList');
   var redraw = function () { list.innerHTML = roleRows(roles); };
   list.onclick = function (e) {
@@ -1014,6 +1020,34 @@ function roleRows(roles) {
       '<span class="acts"><button class="btn quiet sm" data-act="edit">直す</button><button class="btn quiet sm danger" data-act="delete">削除</button></span></div>';
   }).join('');
 }
+/* ページの文字を、読む順に並べる。縦書きは「右の列から、上から下へ」 */
+function pageText(tc) {
+  var items = tc.items.filter(function (it) { return it.str && it.transform; });
+  var fix = function (t) {
+    /* 縦書き用の記号（﹁︑︒など）や部首の字（⼀⽇など）を、ふつうの字にそろえる */
+    return t.replace(/[\u2E80-\u2FDF\uFE10-\uFE1F\uFE30-\uFE4F]/g, function (c) { return c.normalize('NFKC'); });
+  };
+  var flat = function () { return fix(items.map(function (it) { return it.str + (it.hasEOL ? '\n' : ''); }).join('')); };
+  if (items.length < 8) return flat();
+  /* 縦書きかどうか：となり合う字が「同じ列で下へ」並んでいることが多ければ縦書き */
+  var down = 0, side = 0;
+  for (var i = 1; i < items.length; i++) {
+    var a = items[i - 1].transform, b = items[i].transform, h = Math.abs(a[3]) || Math.abs(a[0]) || 10;
+    if (Math.abs(a[4] - b[4]) < h * 0.6 && b[5] < a[5]) down++; else if (Math.abs(a[5] - b[5]) < h * 0.6 && b[4] > a[4]) side++;
+  }
+  if (down <= side) return flat();
+  var cols = [];
+  items.forEach(function (it) {
+    var x = it.transform[4], h = Math.abs(it.transform[0]) || Math.abs(it.transform[3]) || 10;
+    var c = cols.filter(function (c) { return Math.abs(c.x - x) < h * 0.6; })[0];
+    if (!c) { c = { x: x, list: [] }; cols.push(c); }
+    c.list.push(it);
+  });
+  cols.sort(function (a, b) { return b.x - a.x; });
+  return fix(cols.map(function (c) {
+    return c.list.sort(function (a, b) { return b.transform[5] - a.transform[5]; }).map(function (it) { return it.str; }).join('');
+  }).join('\n'));
+}
 /* PDFから文字を取り出す（縦書きでも、ページごとに上から順に） */
 function pdfText(blob, onProgress) {
   return loadPdfJs().then(function (lib) {
@@ -1025,8 +1059,204 @@ function pdfText(blob, onProgress) {
     var next = function () {
       i++; if (i > doc.numPages) { doc.destroy(); return out.join('\n\n'); }
       return doc.getPage(i).then(function (pg) { return pg.getTextContent(); }).then(function (tc) {
-        out.push(tc.items.map(function (it) { return it.str + (it.hasEOL ? '\n' : ''); }).join(''));
+        out.push(pageText(tc));
         if (onProgress) onProgress(i / doc.numPages);
+        return next();
+      });
+    };
+    return next();
+  });
+}
+
+/* ===================== 管理：セリフの割り振り ===================== */
+var KIND_LABEL = { dir: 'ト書き', scene: '場面', skip: '読まない' };
+function viewLines(scriptId) {
+  app.innerHTML = dayHead('セリフの割り振り', '<a class="btn ghost sm" id="lnBack" href="#/admin">← 戻る</a>') + '<main class="wrap lines-wrap" id="ln">' + loading() + '</main>';
+  Promise.all([api('shelf', {}), api('lines', { scriptId: scriptId })]).then(function (r) {
+    var sc = r[0].filter(function (x) { return x.id === scriptId; })[0];
+    if (!sc) throw { code: 'notfound', message: 'この台本は見つかりません' };
+    document.getElementById('lnBack').href = '#/admin/roles/' + sc.workId;
+    return api('roles', { workId: sc.workId }).then(function (roles) { renderLines(sc, roles, r[1] ? r[1].lines : null); });
+  }).catch(function (e) { if (!onAuthError(e, 'admin')) { var m = document.getElementById('ln'); if (m) m.innerHTML = '<div class="card">' + esc(e.message) + '</div>'; } });
+}
+function renderLines(sc, roles, lines) {
+  var main = document.getElementById('ln'); if (!main) return;
+  var roleNames = roles.map(function (r) { return r.name; });
+  if (!lines) {
+    main.innerHTML = '<section class="card"><h2>' + esc(sc.label) + (sc.status === 'final' ? '（確定版）' : '（下書き）') + '</h2>' +
+      '<p class="note">まだ割り振りがありません。AIが台本を頭から読んで、一行ずつ分けます。台本1冊で数分かかります。終わるまでこの画面を開いたままにしてください。</p>' +
+      (roles.length ? '<p class="note">使う役：' + roleNames.map(esc).join('、') + '</p>' : '<p class="note warn">先に「登場人物」を登録しておくと、役名がそろって正確になります。</p>') +
+      '<div class="aibox"><button class="btn brand" id="aiLines">' + ART.sheep('happy') + 'AIでセリフを割り振る</button><p class="note" id="aiSay"></p><div class="prog" hidden><i></i></div></div></section>';
+    document.getElementById('aiLines').onclick = function () { runAiLines(sc, roleNames, this); };
+    return;
+  }
+  var filter = 'all', dirty = false, timer = null, saving = false;
+  var names = function () {
+    var extra = [];
+    lines.forEach(function (l) { if (l.k === 'line' && l.r && roleNames.indexOf(l.r) < 0 && extra.indexOf(l.r) < 0) extra.push(l.r); });
+    return { all: roleNames.concat(extra), extra: extra };
+  };
+  var counts = function () {
+    var c = { line: 0, q: 0, none: 0 };
+    lines.forEach(function (l) { if (l.k === 'line') c.line++; if (l.q) c.q++; if (l.k === 'line' && !l.r) c.none++; });
+    return c;
+  };
+  main.innerHTML = '<div class="lnbar card"><div class="lnstat" id="lnStat"></div>' +
+    '<div class="lnfilters" id="lnFilters"></div>' +
+    '<div class="row"><button class="btn quiet sm" id="lnPdf">台本を開いて見比べる</button><button class="btn quiet sm" id="lnRedo">AIでやり直す</button><span class="lnsave" id="lnSave"></span></div></div>' +
+    '<div class="lnlist" id="lnList"></div>';
+  var list = document.getElementById('lnList');
+  var chip = function (l) {
+    if (l.k === 'line') return '<button class="lnchip role" data-pick style="--c:' + roleColor(l.r) + '">' + esc(l.r || '役？') + '</button>';
+    return '<button class="lnchip k-' + l.k + '" data-pick>' + KIND_LABEL[l.k] + '</button>';
+  };
+  var row = function (l, i) {
+    return '<div class="ln k-' + l.k + (l.q ? ' q' : '') + '" data-i="' + i + '">' + chip(l) + '<p class="lt" data-edit>' + esc(l.t) + '</p>' + (l.q ? '<span class="qmark" title="AIが迷った行">要確認</span>' : '') + '</div>';
+  };
+  var shown = function (l) {
+    if (filter === 'all') return true;
+    if (filter === 'q') return l.q || (l.k === 'line' && !l.r);
+    return l.k === 'line' && l.r === filter;
+  };
+  var drawStat = function () {
+    var c = counts(), n = names();
+    document.getElementById('lnStat').innerHTML = 'セリフ <b>' + c.line + '</b>　全部で ' + lines.length + ' 行' + (c.q + c.none ? '　<span class="qmark">要確認 ' + (c.q + c.none) + '</span>' : '　<span class="okmark">確認済み</span>');
+    document.getElementById('lnFilters').innerHTML = '<button class="rchip' + (filter === 'all' ? ' on' : '') + '" data-f="all">すべて</button>' +
+      '<button class="rchip' + (filter === 'q' ? ' on' : '') + '" data-f="q">要確認だけ</button>' +
+      n.all.map(function (nm) { return '<button class="rchip' + (filter === nm ? ' on' : '') + '" data-f="' + esc(nm) + '">' + esc(nm) + '</button>'; }).join('') +
+      (n.extra.length ? '<p class="note">登場人物にない役名：' + n.extra.map(esc).join('、') + '（「割り振り」画面で役に追加するか、ここで直してください）</p>' : '');
+  };
+  var draw = function () {
+    var html = '';
+    lines.forEach(function (l, i) { if (shown(l)) html += row(l, i); });
+    list.innerHTML = html || '<p class="note">この条件の行はありません。</p>';
+    drawStat();
+  };
+  var redrawRow = function (i) {
+    var el = list.querySelector('.ln[data-i="' + i + '"]');
+    if (el) { var t = document.createElement('div'); t.innerHTML = row(lines[i], i); el.replaceWith(t.firstChild); }
+    drawStat();
+  };
+  var save = function () {
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      if (saving) return save();
+      saving = true; dirty = false; document.getElementById('lnSave').textContent = '保存中…';
+      api('saveLines', { scriptId: sc.id, lines: lines }).then(function () {
+        saving = false; var el = document.getElementById('lnSave'); if (el) el.textContent = dirty ? '' : '保存しました';
+      }).catch(function (err) { saving = false; dirty = true; if (!onAuthError(err, 'admin')) toast('保存できませんでした：' + err.message); });
+    }, 1200);
+  };
+  var changed = function (i) { dirty = true; document.getElementById('lnSave').textContent = '…'; if (i >= 0) redrawRow(i); else draw(); save(); };
+  window.onbeforeunload = function () { return dirty ? '保存されていない変更があります' : undefined; };
+  document.getElementById('lnFilters').onclick = function (e) { var b = e.target.closest('[data-f]'); if (!b) return; filter = b.dataset.f; draw(); window.scrollTo(0, 0); };
+  document.getElementById('lnPdf').onclick = function () {
+    var b = this; b.disabled = true;
+    scriptBlob(sc).then(function (blob) { b.disabled = false; viewPdf(blob, sc); }).catch(function (err) { b.disabled = false; toast(err.message); });
+  };
+  document.getElementById('lnRedo').onclick = function () {
+    var b = this;
+    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = '今の割り振りが消えます。もう一度押す'; setTimeout(function () { if (b.isConnected) { b.dataset.sure = ''; b.textContent = 'AIでやり直す'; } }, 4000); return; }
+    renderLines(sc, roles, null);
+  };
+  list.onclick = function (e) {
+    var el = e.target.closest('.ln'); if (!el) return;
+    var i = +el.dataset.i, l = lines[i];
+    if (e.target.closest('[data-pick]')) return pickFor(i, e.target.closest('[data-pick]'));
+    if (e.target.closest('[data-edit]') && !el.querySelector('textarea')) {
+      var p = el.querySelector('.lt'), ta = document.createElement('textarea');
+      ta.className = 'in lnedit'; ta.value = l.t; ta.rows = Math.max(2, Math.ceil(l.t.length / 28));
+      p.replaceWith(ta); ta.focus();
+      ta.onblur = function () { var v = ta.value.trim(); if (v && v !== l.t) { l.t = v; l.q = false; changed(i); } else redrawRow(i); };
+    }
+  };
+  var pickFor = function (i, anchor) {
+    var l = lines[i], n = names();
+    var v = document.createElement('div'); v.className = 'veil';
+    v.innerHTML = '<div class="sheet lnsheet" role="dialog" aria-label="この行を割り振る"><div class="pass"><p class="lnq">' + esc(l.t.slice(0, 80)) + (l.t.length > 80 ? '…' : '') + '</p>' +
+      '<h3>だれのセリフ？</h3><div class="rolepick">' + n.all.map(function (nm) {
+        return '<button class="rchip' + (l.k === 'line' && l.r === nm ? ' on' : '') + '" data-r="' + esc(nm) + '" style="--c:' + roleColor(nm) + '">' + esc(nm) + '</button>';
+      }).join('') + '</div>' +
+      '<h3>セリフ以外</h3><div class="rolepick">' + ['dir', 'scene', 'skip'].map(function (k) {
+        return '<button class="rchip' + (l.k === k ? ' on' : '') + '" data-k="' + k + '">' + KIND_LABEL[k] + '</button>';
+      }).join('') + '</div>' +
+      '<h3>行の操作</h3><div class="rolepick"><button class="rchip" data-op="join"' + (i ? '' : ' disabled') + '>上の行とつなげる</button><button class="rchip" data-op="split">ここで2行に分ける</button><button class="rchip" data-op="add">下に行を足す</button><button class="rchip danger" data-op="del">この行を消す</button></div>' +
+      '<div class="row end"><button class="btn quiet" data-close>閉じる</button></div></div></div>';
+    document.body.appendChild(v);
+    var close = function () { v.remove(); };
+    v.onclick = function (e) {
+      if (e.target === v || e.target.closest('[data-close]')) return close();
+      var b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.r) { l.k = 'line'; l.r = b.dataset.r; l.q = false; close(); return changed(i); }
+      if (b.dataset.k) { l.k = b.dataset.k; l.r = ''; l.q = false; close(); return changed(i); }
+      if (b.dataset.op === 'del') { lines.splice(i, 1); close(); return changed(-1); }
+      if (b.dataset.op === 'add') { lines.splice(i + 1, 0, { k: 'dir', r: '', t: '（新しい行）', q: true }); close(); return changed(-1); }
+      if (b.dataset.op === 'join' && i > 0) { lines[i - 1].t += l.t; lines.splice(i, 1); close(); return changed(-1); }
+      if (b.dataset.op === 'split') {
+        var at = prompt('分けたいところまでの文字を入れてください（その後ろから新しい行になります）', l.t.slice(0, Math.floor(l.t.length / 2)));
+        if (!at) return; var k = l.t.indexOf(at); if (k < 0 || k + at.length >= l.t.length) { toast('その文字が見つかりませんでした'); return; }
+        lines.splice(i + 1, 0, { k: l.k, r: l.r, t: l.t.slice(k + at.length).trim(), q: true }); l.t = l.t.slice(0, k + at.length).trim();
+        close(); return changed(-1);
+      }
+    };
+  };
+  draw();
+}
+function roleColor(name) {
+  var cols = ['#FFB3C7', '#FFD23F', '#8FD3F4', '#9BE29B', '#C9B6FF', '#FFB980', '#7FE0D2', '#F4A6A6'];
+  var h = 0; String(name || '').split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
+  return name ? cols[h % cols.length] : '#fff';
+}
+function runAiLines(sc, roleNames, btn) {
+  var box = btn.parentNode, bar = box.querySelector('.prog'), say = document.getElementById('aiSay');
+  btn.disabled = true; bar.hidden = false; bar.firstChild.style.width = '3%';
+  var fail = function (err) {
+    btn.disabled = false; bar.hidden = true;
+    if (onAuthError(err, 'admin')) return;
+    say.textContent = err.code === 'nokey' ? 'AIを使うには、GASのスクリプト プロパティに GEMINI_KEY を入れてください。' : (err.message || 'うまくいきませんでした');
+  };
+  say.textContent = '台本を開いています…';
+  scriptBlob(sc, function (r) { bar.firstChild.style.width = Math.round(3 + r * 7) + '%'; })
+    .then(function (blob) { say.textContent = '台本の文字を読み取っています…'; return pdfPages(blob); })
+    .then(function (pages) {
+      /* 4000字くらいずつに区切ってAIに渡す（ページの途中では切らない） */
+      var chunks = [], cur = '';
+      pages.forEach(function (pg) {
+        if (cur && (cur + pg).length > 4000) { chunks.push(cur); cur = ''; }
+        cur += (cur ? '\n' : '') + pg;
+        while (cur.length > 6000) { chunks.push(cur.slice(0, 4000)); cur = cur.slice(4000); }
+      });
+      if (cur.trim()) chunks.push(cur);
+      if (!chunks.length || !chunks.join('').replace(/\s/g, '')) throw { message: '台本から文字を読み取れませんでした（画像だけのPDFかもしれません）' };
+      var all = [], n = 0;
+      var next = function () {
+        if (n >= chunks.length) return all;
+        say.textContent = 'AIがセリフを割り振っています（' + (n + 1) + ' / ' + chunks.length + '）…';
+        return api('aiLines', { workId: sc.workId, text: chunks[n], roles: roleNames }).then(function (part) {
+          all = all.concat(part); n++; bar.firstChild.style.width = Math.round(10 + n / chunks.length * 85) + '%';
+          return next();
+        });
+      };
+      return next();
+    })
+    .then(function (lines) {
+      say.textContent = '保存しています…';
+      return api('saveLines', { scriptId: sc.id, lines: lines }).then(function () { return lines; });
+    })
+    .then(function (lines) { toast(lines.length + '行に割り振りました'); viewLines(sc.id); })
+    .catch(fail);
+}
+function pdfPages(blob) {
+  return loadPdfJs().then(function (lib) {
+    return blob.arrayBuffer().then(function (buf) {
+      return lib.getDocument({ data: new Uint8Array(buf), cMapUrl: PDFJS + 'cmaps/', cMapPacked: true, standardFontDataUrl: PDFJS + 'standard_fonts/' }).promise;
+    });
+  }).then(function (doc) {
+    var out = [], i = 0;
+    var next = function () {
+      i++; if (i > doc.numPages) { doc.destroy(); return out; }
+      return doc.getPage(i).then(function (pg) { return pg.getTextContent(); }).then(function (tc) {
+        out.push(pageText(tc));
         return next();
       });
     };
@@ -1453,6 +1683,16 @@ var DEMO = {
         String(p.text || '').replace(/([^\s「」（）()、。]{1,8})「/g, function (m0, nm) { seen[nm] = 1; });
         Object.keys(seen).forEach(function (nm) { if (!rolesOf(p.workId).some(function (x) { return x.name === nm; })) { db.roles.push({ id: 'r' + Date.now() + added, workId: p.workId, name: nm, note: '（デモ）', order: rolesOf(p.workId).length + 1 }); added++; } });
         self.save(); return ok({ added: added, roles: rolesOf(p.workId) });
+      case 'aiLines':
+        return ok(String(p.text || '').split(/\n+/).map(function (ln) {
+          ln = ln.trim(); if (!ln) return null;
+          var m = ln.match(/^([^「」\s]{1,8})「(.*)」?$/);
+          if (m) return { k: 'line', r: m[1], t: m[2].replace(/」$/, ''), q: (p.roles || []).indexOf(m[1]) < 0 };
+          if (/^第.+場/.test(ln)) return { k: 'scene', r: '', t: ln, q: false };
+          return { k: 'dir', r: '', t: ln.replace(/^（ト書き）/, ''), q: !/^（/.test(ln) };
+        }).filter(Boolean));
+      case 'saveLines': db.lines = db.lines || {}; db.lines[p.scriptId] = p.lines; self.save(); return ok({ scriptId: p.scriptId, count: p.lines.length });
+      case 'lines': db.lines = db.lines || {}; return ok(db.lines[p.scriptId] ? { scriptId: p.scriptId, lines: db.lines[p.scriptId] } : null);
       case 'audios': return ok(db.audios.filter(function (x) { return x.workId === p.workId; }));
       case 'saveAudioNote': var ax = db.audios.filter(function (x) { return x.id === p.audioId; })[0]; ax.label = String(p.label || '').trim() || ax.fileName; self.save(); return ok(ax);
       case 'deleteAudio': db.audios = db.audios.filter(function (x) { return x.id !== p.audioId; }); delete self.files[p.audioId]; self.save(); return ok({ deleted: p.audioId });
@@ -1535,6 +1775,7 @@ function route() {
   var parts = (location.hash.slice(1) || '/').split('/').filter(Boolean);
   window.scrollTo(0, 0);
   document.querySelectorAll('.veil').forEach(function (v) { v.remove(); });
+  if (!(parts[0] === 'admin' && parts[1] === 'lines')) window.onbeforeunload = null;
   if (parts[0] === 'admin') {
     stopPlayer();
     document.body.className = 'day';
@@ -1550,6 +1791,7 @@ function route() {
     if (parts[1] === 'shelf') return viewShelf(parts[2] || '');
     if (parts[1] === 'roles' && parts[2]) return viewRoles(parts[2]);
     if (parts[1] === 'audio' && parts[2]) return viewAudio(parts[2]);
+    if (parts[1] === 'lines' && parts[2]) return viewLines(parts[2]);
     if (parts[1] === 'code' || store.get('adminMustSet', false)) return viewAdminCode();
     return viewDesk();
   }
