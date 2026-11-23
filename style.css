@@ -782,7 +782,7 @@ body.print-theme{background:#fff;color:#111}
 .pr-mine p{background:#FFF59A}
 @media screen and (max-width:600px){.pr-row{grid-template-columns:4.5em 1fr 2em}}
 /* 楽屋ボード */
-.card.board{margin-bottom:18px}
+.card.kboard{margin-bottom:18px}
 .blist{list-style:none;margin:0;padding:0;display:grid;gap:8px}
 .blist li{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border-radius:12px;background:#fffdf6;border:1px solid #eee3cc}
 .b-ico{font-size:22px}
@@ -806,3 +806,66 @@ body.print-theme{background:#fff;color:#111}
 .lrn-card.dojo{min-height:200px;text-align:center;align-items:center}
 .dj-res{font:400 30px/1.2 var(--f-pop);margin:0;color:#C2410C}
 .pe-ocr{margin-top:10px;padding-top:10px;border-top:1px dashed #d8cfb9}
+/* ===== v0.11 楽屋の整理（ゾーン分け・歯車） ===== */
+.roomhero .gear{position:absolute;right:max(4vw,14px);top:calc(12px + env(safe-area-inset-top));z-index:5;width:48px;height:48px;border-radius:50%;
+  border:var(--ol);background:#FFFDF6;color:var(--ink);display:grid;place-items:center;box-shadow:var(--shadow);cursor:pointer}
+.roomhero .badge{top:calc(70px + env(safe-area-inset-top))}
+.gear-ico{width:24px;height:24px;vertical-align:middle}
+.zone{margin-top:26px;padding:18px 16px 20px;border-radius:20px;border:var(--ol);box-shadow:var(--shadow)}
+.zone-practice{background:#FFFDF6}
+.zone-room{background:rgba(255,253,246,.9)}
+.zone-t{font:400 22px/1.2 var(--f-pop);margin:0 0 4px;display:flex;align-items:center;gap:10px}
+.zone-t::before{content:'';width:10px;height:26px;border-radius:4px;background:#E8743B}
+.zone-room .zone-t::before{background:#5BA35B}
+.zone .modes{margin-top:12px}
+.zone .mode.big{grid-column:1/-1;min-height:112px;border-width:3px}
+.zone .mode.big b{font-size:24px}
+.zone .modes.one{grid-template-columns:1fr}
+.zone .sec-t{margin-top:18px}
+.zone .card.kboard{box-shadow:none}
+.tatami-in .foot .btn{display:inline-flex;align-items:center;gap:8px;min-height:48px}
+/* 設定シート */
+.set-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.set-head h2{margin:0}
+.set-t{font-size:14px;margin:18px 0 6px;color:#6b5a44}
+.set-t.danger-t{color:#B3261E}
+.set-list{display:grid;border:1.5px solid #e3dccb;border-radius:14px;overflow:hidden;background:#fff}
+.set-i{display:block;width:100%;min-height:52px;padding:12px 14px;text-align:left;font:inherit;font-weight:700;color:var(--ink);background:none;border:0;border-top:1px solid #eee3cc;text-decoration:none;cursor:pointer}
+.set-list .set-i:first-child{border-top:0}
+.set-i small{display:block;font-weight:400;font-size:12.5px;color:#7a6d5c;margin-top:2px}
+.set-i.danger{color:#B3261E}
+.set-i:focus-visible,.seg-b:focus-visible{outline:3px solid #2F6FD6;outline-offset:-3px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:var(--ol);border-radius:999px;overflow:hidden}
+.seg-b{min-height:48px;font:inherit;font-weight:700;background:#fff;border:0;border-left:1.5px solid var(--ink);cursor:pointer}
+.seg-b:first-child{border-left:0}
+.seg-b.on{background:#FFD447}
+.confirm-row{justify-content:flex-end;gap:10px;margin-top:14px}
+.confirm-row .btn{min-height:48px}
+.btn.danger-solid{background:#B3261E;color:#fff;border:var(--ol)}
+.codebox{display:grid;gap:6px;justify-items:start;background:#FFF7EC;border:1.5px dashed #E8743B;border-radius:14px;padding:12px 14px;margin:10px 0}
+.codebox b{font:400 30px/1.1 var(--f-pop);letter-spacing:.18em}
+.a2hs-steps{padding-left:1.3em;line-height:1.9;margin:8px 0}
+/* 文字の大きさ */
+html[data-fs="l"] main{zoom:1.12}
+html[data-fs="xl"] main{zoom:1.25}
+/* タップ領域 48px 以上 */
+.btn,.rchip,.mode,.clap,.hit,.drv-sm{min-height:48px}
+.btn.sm{min-height:44px}
+/* ===== 覚える：マイクの見える化 ===== */
+.mic{display:flex;align-items:center;gap:10px;justify-content:center;white-space:normal}
+.mic .mic-dot{flex:none;width:14px;height:14px;border-radius:50%;background:#C0261A;box-shadow:0 0 0 0 rgba(192,38,26,.5)}
+.mic.on .mic-dot{animation:micdot 1.2s ease-out infinite}
+@keyframes micdot{0%{box-shadow:0 0 0 0 rgba(192,38,26,.55)}100%{box-shadow:0 0 0 16px rgba(192,38,26,0)}}
+.mic .mic-h{display:block;font-weight:400;color:#555;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}
+.mic.stall{background:#FFF2CF;border-color:#B7791F;color:#5A3A00}
+.mic.stall::before{content:'!';display:grid;place-items:center;width:22px;height:22px;border-radius:50%;background:#B7791F;color:#fff;font-weight:700}
+@media (prefers-reduced-motion: reduce){.mic.on .mic-dot{animation:none}}
+/* ===== 赤ペン：色だけに頼らない ===== */
+.d-ok{color:#1E5E2A;background:none;border-bottom:2px solid #5BAF6B;border-radius:0}
+.d-ng{color:#B3261E;background:#FDE4E1;font-weight:700;text-decoration:underline wavy #B3261E 2px;text-underline-offset:5px;border-radius:3px}
+.d-ng::before{content:'▲';font-size:.55em;vertical-align:super;margin-right:1px}
+.d-x{color:#7d7366;text-decoration:line-through 2px}
+.d-x::before{content:'＋';font-size:.8em;color:#7d7366}
+.pen-count{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.pen-count span{font-size:13px;font-weight:700;padding:2px 10px;border-radius:999px;border:1.5px solid currentColor}
+.pc-ok{color:#1E5E2A}.pc-ng{color:#B3261E}.pc-x{color:#6b6257}

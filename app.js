@@ -418,7 +418,7 @@ function savePass(workId, r, code) {
   var norm = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (norm) {
     var codes = store.get('codes', []).filter(function (c) { return c !== norm; });
-    codes.unshift(norm); store.set('codes', codes.slice(0, 8));
+    codes.unshift(norm); store.set('codes', codes.slice(0, 8)); store.set('code.' + workId, norm);
   }
   try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { }
 }
@@ -526,33 +526,40 @@ function viewHome(id) {
 }
 function renderHome(r) {
   var w = r.work, a = r.actor;
-  var hasScript = !!r.script, hasAudio = !!(r.audios && r.audios.length);
-  var modes = [
-    ['script', '台本を見る', hasScript ? r.script.label + '（確定版）を開きます' : '確定版の台本が届くと開けます', TOYS.list.script[2], hasScript ? '' : '台本待ち'],
-    ['learn', '覚える', r.linesAt ? '自分の番で止まります。言えたか声で確かめます' : 'セリフの割り振りが届くと使えます', ART.mirror, r.linesAt ? '' : '準備中'],
-    ['listen', '聞き流す', hasAudio ? '読み合わせの録音（' + r.audios.length + '件）を流します' : '読み合わせの録音が届くと使えます', ART.lamp, hasAudio ? '' : '録音待ち'],
-    ['drive', '運転中', r.linesAt ? '画面を見ずに、耳と声だけで練習します' : 'セリフの割り振りが届くと使えます', ART.go, r.linesAt ? '' : '準備中']
-  ];
+  var hasScript = !!r.script, hasAudio = !!(r.audios && r.audios.length), hasLines = !!r.linesAt;
+  var tile = function (key, title, sub, ico, soon, big) {
+    return '<button class="mode mm-' + key + (big ? ' big' : '') + '"' + (soon ? ' aria-disabled="true"' : '') + ' data-mode="' + key + '"><span class="m-ico">' + (ico.indexOf('class=') < 0 ? ico.replace('<svg', '<svg class="ico"') : ico) + '</span><span><b>' + title + '</b><small>' + esc(sub) + '</small></span>' + (soon ? '<span class="soon">' + soon + '</span>' : '') + '</button>';
+  };
   document.body.className = 'room-theme';
   document.body.style.setProperty('--tile', PROPS_TILE);
   app.innerHTML = demoBar() + '<header class="roomhero">' + roomSvg() +
-    '<a class="back pill" href="#/">← 楽屋口へ</a>' + badge(w) +
+    '<a class="back pill" href="#/">← 楽屋口へ</a>' +
+    '<button class="gear" id="roomGear" aria-label="設定とその他の操作" aria-haspopup="dialog">' + GEAR_SVG + '</button>' + badge(w) +
     '<div class="sign"><small>劇団員楽屋</small><h1>' + esc(w.title) + '</h1><span class="meta">' + esc(dateLine(w)) + (w.venue ? '・' + esc(w.venue) : '') + '</span></div>' +
     '</header><main class="wrap tatami-in">' +
     '<div class="tapes"><span>あなたの役</span>' + (a.roles.length ? a.roles.map(tape).join('') : '<span>（未定）</span>') + '</div>' +
     '<div class="say hello">' + ART.sheep('happy') + '<div class="bubble">' + esc(a.name) + 'さん、楽屋へようこそ。' + (hasScript ? '台本が届いているよ。さっそく開いてみよう' : '台本が届いたら、ここから稽古できるよ') + '</div></div>' +
-    noticeCard(r) +
+    /* 新しいお知らせだけは、練習より先に目に入る場所に出す（読んだら消える） */
+    noticeCard(r, 'now') +
+    /* ① 練習する */
+    '<section class="zone zone-practice" aria-labelledby="zp-t"><h2 class="zone-t" id="zp-t">練習する</h2><div class="modes">' +
+    tile('learn', '覚える', hasLines ? '自分の番で止まります。言えたか声で確かめます' : 'セリフの割り振りが届くと使えます', ART.mirror, hasLines ? '' : '準備中', true) +
+    tile('script', '台本を見る', hasScript ? r.script.label + '（確定版）を開きます' : '確定版の台本が届くと開けます', TOYS.list.script[2], hasScript ? '' : '台本待ち') +
+    tile('listen', '聞き流す', hasAudio ? '読み合わせの録音（' + r.audios.length + '件）を流します' : '読み合わせの録音が届くと使えます', ART.lamp, hasAudio ? '' : '録音待ち') +
+    tile('drive', '運転中', hasLines ? '画面を見ずに、耳と声だけで練習します' : 'セリフの割り振りが届くと使えます', ART.go, hasLines ? '' : '準備中') +
+    tile('dojo', 'きっかけ道場', hasLines ? '相手のセリフの終わりを聞いて、すばやく言う' : 'セリフの割り振りが届くと使えます', TOYS.list.castanet[2], hasLines ? '' : '準備中') +
+    '<div class="prog modeprog" hidden><i></i></div></div></section>' +
     TOYS.row(['makeup', 'mirror', 'afro', 'fan', 'mic', 'towel']) +
-    '<div class="modes">' + modes.map(function (m) {
-      return '<button class="mode mm-' + m[0] + '"' + (m[4] ? ' aria-disabled="true"' : '') + ' data-mode="' + m[0] + '"><span class="m-ico">' + (m[3].indexOf('class=') < 0 ? m[3].replace('<svg', '<svg class="ico"') : m[3]) + '</span><span><b>' + m[1] + '</b><small>' + esc(m[2]) + '</small></span>' + (m[4] ? '<span class="soon">' + m[4] + '</span>' : '') + '</button>';
-    }).join('') + '<div class="prog modeprog" hidden><i></i></div></div>' +
-    '<h2 class="sec-t">楽屋花</h2><div class="flowers">' + flowerRow(w.id) +
+    /* ② 楽屋（みんなとのつながり） */
+    '<section class="zone zone-room" aria-labelledby="zr-t"><h2 class="zone-t" id="zr-t">楽屋</h2>' +
+    noticeCard(r, 'past') +
+    '<h3 class="sec-t">楽屋花</h3><div class="flowers">' + flowerRow(w.id) +
     '<p>場ごとに覚え具合の花が咲きます。全部の場が満開になったら、千秋楽の準備はばっちり。</p></div>' +
-    (w.status === 'closed' ? '' : boardCard(w)) +
+    (w.status === 'closed' ? '' : boardCard(w).replace('<h2 class="sec-t">', '<h3 class="sec-t">').replace('楽屋ボード</h2>', '楽屋ボード</h3>') +
+      '<div class="modes one">' + tile('voice', '声の差し入れ', hasLines ? '自分のセリフを録音すると、相手役の練習であなたの声が流れます' : 'セリフの割り振りが届くと使えます', TOYS.list.mic[2], hasLines ? '' : '準備中') + '</div>') +
+    '</section>' +
     TOYS.row(['script', 'nosegl', 'castanet', 'tape', 'bottle']) +
-    '<p class="foot"><button class="btn quiet sm" id="recOut">練習の記録を保存</button><label class="btn quiet sm">記録を読み込む<input type="file" accept="application/json,.json" class="sr" id="recIn"></label></p>' +
-    '<p class="foot"><a class="btn quiet sm" href="#/guide">使い方</a><button class="btn quiet sm" id="dropPass">この入館パスを外す</button>' +
-    '<button class="btn quiet sm danger" id="wipeAll">この端末のデータをすべて消す</button></p></main>';
+    '<p class="foot"><button class="btn quiet" id="roomMore">' + GEAR_SVG + ' 設定・使い方・記録の保存</button></p></main>';
   bindToys(app.querySelector('.tatami-in'));
   if (w.status !== 'closed') bindBoard(w);
   var nb = document.getElementById('noticeOk');
@@ -560,28 +567,15 @@ function renderHome(r) {
     var log = store.get('noticeLog.' + w.id, []); log.unshift({ at: new Date().toISOString(), html: NOTICE_NOW }); store.set('noticeLog.' + w.id, log.slice(0, 5));
     store.set('seen.' + w.id, snapOf(r)); var c = this.closest('.notice'); c.classList.add('gone'); setTimeout(function () { c.remove(); }, 300); };
   if (!store.get('seen.' + w.id, null)) store.set('seen.' + w.id, Object.assign(snapOf(r), { noticeAt: '' }));
-  var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  var standalone = window.navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-  if (ios && !standalone && !store.get('a2hsSeen', false)) {
-    app.querySelector('.tapes').insertAdjacentHTML('afterend', '<div class="card a2hs"><b>ホーム画面に置くと、アプリのように使えます</b>' +
-      '<ol><li>下の <span class="share-ico" aria-label="共有">⬆︎</span>（共有）を押す</li><li>「ホーム画面に追加」を選ぶ</li><li>ホーム画面の羊のアイコンから開き、入館コードをもう一度だけ入れる</li></ol>' +
-      '<p class="note">iPhoneでは、Safariとホーム画面版でデータが別々なので、最初の1回だけコードが必要です。</p><button class="btn quiet sm" id="a2hsOk">わかった</button></div>');
-    document.getElementById('a2hsOk').onclick = function () { store.set('a2hsSeen', true); this.closest('.a2hs').remove(); };
-  }
-  document.getElementById('wipeAll').onclick = function () {
-    var b = this;
-    if (b.dataset.sure !== '1') { b.dataset.sure = '1'; b.textContent = '入館パス・保存した台本や録音も消えます。もう一度押す'; setTimeout(function () { if (b.isConnected) { b.dataset.sure = ''; b.textContent = 'この端末のデータをすべて消す'; } }, 5000); return; }
-    stopPlayer();
-    try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('gakuya.') === 0) localStorage.removeItem(k); }); } catch (e) { }
-    var after = function () { toast('この端末のデータを消しました'); go('/'); };
-    if (window.caches) caches.delete(FILES).then(after, after); else after();
-  };
-  app.querySelector('.modes').onclick = function (e) {
-    var b = e.target.closest('.mode'); if (!b) return;
-    var m = b.dataset.mode;
-    if (m === 'learn') { if (r.linesAt) go('/w/' + w.id + '/learn'); else toast('セリフの割り振りができると使えます。いま舞台監督が準備しています'); return; }
-    if (m === 'drive') { if (r.linesAt) go('/w/' + w.id + '/drive'); else toast('セリフの割り振りができると使えます'); return; }
-    if (m === 'listen') { if (hasAudio) go('/w/' + w.id + '/listen'); else toast('読み合わせの録音が届くと使えます'); return; }
+  homeInstallGuide(w);
+  app.querySelector('.tatami-in').addEventListener('click', function (e) {
+    var b = e.target.closest('.mode[data-mode]'); if (!b) return;
+    var m = b.dataset.mode, need = function (ok, msg, path) { if (ok) go('/w/' + w.id + '/' + path); else toast(msg); };
+    if (m === 'learn') return need(hasLines, 'セリフの割り振りができると使えます。いま舞台監督が準備しています', 'learn');
+    if (m === 'drive') return need(hasLines, 'セリフの割り振りができると使えます', 'drive');
+    if (m === 'dojo') return need(hasLines, 'セリフの割り振りができると使えます', 'dojo');
+    if (m === 'voice') return need(hasLines, 'セリフの割り振りができると使えます', 'voice');
+    if (m === 'listen') return need(hasAudio, '読み合わせの録音が届くと使えます', 'listen');
     if (m === 'script') {
       if (!hasScript) { toast('確定版の台本が届くと開けます'); return; }
       var bar = app.querySelector('.modeprog'); bar.hidden = false; b.disabled = true;
@@ -590,29 +584,8 @@ function renderHome(r) {
         .then(function (blob) { bar.hidden = true; b.disabled = false; viewPdf(blob, x); })
         .catch(function (err) { bar.hidden = true; b.disabled = false; toast(err.message || '台本を開けませんでした'); });
     }
-  };
-  /* 練習の記録は端末の中だけにあるので、機種変更やSafariの自動削除に備えてファイルに書き出せるようにする */
-  document.getElementById('recOut').onclick = function () {
-    var data = { app: 'yomiawase', workId: w.id, title: w.title, at: new Date().toISOString(), study: store.get('study.' + w.id, {}), noticeLog: store.get('noticeLog.' + w.id, []) };
-    var blob = new Blob([JSON.stringify(data)], { type: 'application/json' }), a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = '練習の記録_' + w.title.replace(/[\\/:*?"<>|]/g, '') + '.json'; document.body.appendChild(a); a.click(); a.remove();
-    toast('記録を保存しました（ファイル）');
-  };
-  document.getElementById('recIn').onchange = function (e) {
-    var f = e.target.files[0]; e.target.value = ''; if (!f) return;
-    f.text().then(function (txt) {
-      var d = JSON.parse(txt);
-      if (d.app !== 'yomiawase' || d.workId !== w.id) throw new Error('この作品の記録ではありません');
-      /* 端末にある記録と合わせ、新しいほうを残す */
-      var cur = store.get('study.' + w.id, {}), n = 0;
-      Object.keys(d.study || {}).forEach(function (k) { if (!cur[k] || (d.study[k].at || 0) > (cur[k].at || 0)) { cur[k] = d.study[k]; n++; } });
-      store.set('study.' + w.id, cur); toast(n + ' 個のセリフの記録を読み込みました'); renderHome(r);
-    }).catch(function (err) { toast(err.message || '読み込めませんでした'); });
-  };
-  document.getElementById('dropPass').onclick = function () {
-    var passes = store.get('passes', {}); delete passes[w.id]; store.set('passes', passes); store.del('me.' + w.id);
-    toast('入館パスを外しました'); go('/');
-  };
+  });
+  document.getElementById('roomGear').onclick = document.getElementById('roomMore').onclick = function () { roomSettings(r); };
 }
 
 /* ===================== 楽屋のお知らせ =====================
@@ -622,7 +595,7 @@ function snapOf(r) {
     audios: (r.audios || []).map(function (a) { return a.id; }), noticeAt: r.work.noticeAt || '' };
 }
 var NOTICE_NOW = '';
-function noticeCard(r) {
+function noticeCard(r, part) {
   var seen = store.get('seen.' + r.work.id, null), now = snapOf(r), items = [];
   if (r.work.notice && r.work.noticeAt && (!seen || seen.noticeAt !== r.work.noticeAt)) {
     items.push('<li class="nt-msg"><b>舞台監督より</b>（' + esc(day(r.work.noticeAt)) + '）<p>' + esc(r.work.notice).replace(/\n/g, '<br>') + '</p></li>');
@@ -636,9 +609,103 @@ function noticeCard(r) {
   var log = store.get('noticeLog.' + r.work.id, []);
   var past = log.length ? '<details class="card notice-log"><summary>過去のお知らせ（' + log.length + '）</summary><ul>' +
     log.map(function (x) { return '<li><small>' + esc(day(x.at)) + ' に読んだもの</small><ul>' + x.html + '</ul></li>'; }).join('') + '</ul></details>' : '';
+  if (part === 'past') return past;
   NOTICE_NOW = items.join('');
-  if (!items.length) return past;
-  return '<div class="card notice" role="status"><h2>お知らせ</h2><ul>' + items.join('') + '</ul><button class="btn quiet sm" id="noticeOk">読みました</button></div>' + past;
+  var cur = items.length ? '<div class="card notice" role="status"><h2>お知らせ</h2><ul>' + items.join('') + '</ul><button class="btn quiet sm" id="noticeOk">読みました</button></div>' : '';
+  return part === 'now' ? cur : cur + past;
+}
+
+/* ===================== 楽屋の設定（歯車） =====================
+   毎日は使わない操作と、取り消せない操作をここにまとめる。取り消せない操作は赤字＋確認 */
+var GEAR_SVG = '<svg class="gear-ico" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>';
+function sheet(html, label) {
+  var v = document.createElement('div'); v.className = 'veil';
+  v.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-label="' + esc(label) + '"><div class="pass">' + html + '</div></div>';
+  document.body.appendChild(v);
+  var close = function () { v.remove(); document.removeEventListener('keydown', esc1); };
+  var esc1 = function (e) { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', esc1);
+  v.addEventListener('click', function (e) { if (e.target === v || e.target.closest('[data-close]')) close(); });
+  var f = v.querySelector('button, a, input'); if (f) setTimeout(function () { f.focus(); }, 30);
+  return { el: v, close: close };
+}
+/* 取り消せない操作の確認。「やめる」が先・既定、実行ボタンは赤 */
+function confirmBox(title, body, okLabel) {
+  return new Promise(function (resolve) {
+    var s = sheet('<h2>' + esc(title) + '</h2><p>' + body + '</p><div class="row confirm-row"><button class="btn main" data-c="no">やめる</button><button class="btn danger-solid" data-c="yes">' + esc(okLabel) + '</button></div>', title);
+    s.el.addEventListener('click', function (e) { var b = e.target.closest('[data-c]'); if (!b) return; s.close(); resolve(b.dataset.c === 'yes'); });
+  });
+}
+/* 文字の大きさ（標準・大・特大）。主な画面の本文がまとめて大きくなる */
+function applyFontSize() { document.documentElement.dataset.fs = store.get('fontSize', 'm'); }
+function roomSettings(r) {
+  var w = r.work, fs = store.get('fontSize', 'm');
+  var s = sheet('<div class="set-head"><h2>設定・その他</h2><button class="btn quiet sm" data-close aria-label="閉じる">閉じる</button></div>' +
+    '<h3 class="set-t">文字の大きさ</h3><div class="seg" role="radiogroup" aria-label="文字の大きさ">' +
+    [['m', '標準'], ['l', '大'], ['xl', '特大']].map(function (o) { return '<button role="radio" aria-checked="' + (fs === o[0]) + '" class="seg-b' + (fs === o[0] ? ' on' : '') + '" data-fs="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div>' +
+    '<h3 class="set-t">練習の記録</h3><div class="set-list">' +
+    '<a class="set-i" href="#/w/' + esc(w.id) + '/print" data-close>自分のセリフに印を付けて印刷</a>' +
+    '<button class="set-i" id="recOut">練習の記録をファイルに保存<small>機種変更や、Safariで記録が消えたときのために</small></button>' +
+    '<label class="set-i">保存した記録を読み込む<input type="file" accept="application/json,.json" class="sr" id="recIn"></label></div>' +
+    '<h3 class="set-t">ヘルプ</h3><div class="set-list"><a class="set-i" href="#/guide" data-close>使い方</a><a class="set-i" href="check.html">この端末の動作チェック</a></div>' +
+    '<h3 class="set-t danger-t">取り消せない操作</h3><div class="set-list">' +
+    '<button class="set-i danger" id="dropPass">この作品の入館パスを外す<small>もう一度入るには入館コードが必要です</small></button>' +
+    '<button class="set-i danger" id="wipeAll">この端末のデータをすべて消す<small>入館パス・練習の記録・保存した台本や録音が消えます</small></button></div>', '設定・その他');
+  var el = s.el;
+  el.querySelector('.seg').onclick = function (e) {
+    var b = e.target.closest('[data-fs]'); if (!b) return;
+    store.set('fontSize', b.dataset.fs); applyFontSize();
+    el.querySelectorAll('.seg-b').forEach(function (x) { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); });
+  };
+  el.querySelector('#recOut').onclick = function () {
+    var data = { app: 'yomiawase', workId: w.id, title: w.title, at: new Date().toISOString(), study: store.get('study.' + w.id, {}), noticeLog: store.get('noticeLog.' + w.id, []) };
+    var blob = new Blob([JSON.stringify(data)], { type: 'application/json' }), a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = '練習の記録_' + w.title.replace(/[\\/:*?"<>|]/g, '') + '.json'; document.body.appendChild(a); a.click(); a.remove();
+    toast('記録を保存しました（ファイル）');
+  };
+  el.querySelector('#recIn').onchange = function (e) {
+    var f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    f.text().then(function (txt) {
+      var d = JSON.parse(txt);
+      if (d.app !== 'yomiawase' || d.workId !== w.id) throw new Error('この作品の記録ではありません');
+      /* 端末にある記録と合わせ、新しいほうを残す */
+      var cur = store.get('study.' + w.id, {}), n = 0;
+      Object.keys(d.study || {}).forEach(function (k) { if (!cur[k] || (d.study[k].at || 0) > (cur[k].at || 0)) { cur[k] = d.study[k]; n++; } });
+      store.set('study.' + w.id, cur); s.close(); toast(n + ' 個のセリフの記録を読み込みました'); renderHome(r);
+    }).catch(function (err) { toast(err.message || '読み込めませんでした'); });
+  };
+  el.querySelector('#dropPass').onclick = function () {
+    s.close();
+    confirmBox('入館パスを外しますか？', '「' + esc(w.title) + '」の楽屋から出ます。もう一度入るには、入館コードが必要です。練習の記録はこの端末に残ります。', '外す').then(function (ok) {
+      if (!ok) return;
+      var passes = store.get('passes', {}); delete passes[w.id]; store.set('passes', passes); store.del('me.' + w.id);
+      toast('入館パスを外しました'); go('/');
+    });
+  };
+  el.querySelector('#wipeAll').onclick = function () {
+    s.close();
+    confirmBox('この端末のデータをすべて消しますか？', '<b>すべての作品の入館パス、練習の記録、保存した台本・録音・声</b>がこの端末から消えます。元に戻せません。必要なら先に「練習の記録をファイルに保存」をしてください。', 'すべて消す').then(function (ok) {
+      if (!ok) return;
+      stopPlayer();
+      try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf('gakuya.') === 0) localStorage.removeItem(k); }); } catch (e) { }
+      var after = function () { toast('この端末のデータを消しました'); go('/'); };
+      if (window.caches) caches.delete(FILES).then(after, after); else after();
+    });
+  };
+}
+/* iPhoneのSafariで入ったとき：ホーム画面版とデータが別なので、追加してから使うよう案内する（入館コードをコピーできる） */
+function homeInstallGuide(w) {
+  var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var standalone = window.navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+  if (!ios || standalone || store.get('a2hsSeen.' + w.id, false)) return;
+  var code = store.get('code.' + w.id, '');
+  var s = sheet('<h2>ホーム画面に追加してから使うと安心です</h2>' +
+    '<p>iPhoneでは、Safariとホーム画面のアプリで<b>練習の記録が別々</b>になります。Safariのまま練習すると、あとでホーム画面版に移ったとき記録が消えたように見えます。</p>' +
+    '<ol class="a2hs-steps"><li>下の <span class="share-ico" aria-label="共有">⬆︎</span>（共有）を押す</li><li>「ホーム画面に追加」を選ぶ</li><li>ホーム画面の羊のアイコンから開き、入館コードを入れる</li></ol>' +
+    (code ? '<div class="codebox"><span>あなたの入館コード</span><b>' + esc(code) + '</b><button class="btn brand" id="a2hsCopy">コードをコピー</button></div>' : '<p class="note">入館コードは、舞台監督から届いたものを使います。</p>') +
+    '<div class="row confirm-row"><button class="btn quiet" data-close id="a2hsLater">このままSafariで使う</button></div>', 'ホーム画面への追加');
+  var c = s.el.querySelector('#a2hsCopy'); if (c) c.onclick = function () { copyText(code, 'コピーしました。ホーム画面版で貼り付けてください'); };
+  s.el.querySelector('#a2hsLater').addEventListener('click', function () { store.set('a2hsSeen.' + w.id, true); });
 }
 
 /* ===================== 聞き流す（録音の再生） ===================== */
@@ -742,7 +809,7 @@ function tick() { if (player.tick) player.tick(); }
 /* ===================== 覚える ===================== */
 var learn = { on: false, rec: null, wake: null, timer: null };
 function stopLearn() {
-  learn.on = false; clearTimeout(learn.timer);
+  learn.on = false; clearTimeout(learn.timer); clearTimeout(learn.watch);
   try { if (learn.rec) learn.rec.abort(); } catch (e) { } learn.rec = null;
   try { speechSynthesis.cancel(); } catch (e) { }
   try { if (learn.wake) learn.wake.release(); } catch (e) { } learn.wake = null;
@@ -817,6 +884,8 @@ function redPen(heard, text) {
     return out;
   };
   return {
+    miss: tState.filter(function (x, k) { return x === 'ng' && normSay(Array.from(text)[k]); }).length,
+    extra: hState.filter(function (x) { return x === 'x'; }).length,
     text: paint(Array.from(text), tState, { ok: 'd-ok', ng: 'd-ng' }),
     heard: paint(hChars, hState, { ok: '', x: 'd-x' }),
     score: (a.length + b.length) ? 2 * L.len / (a.length + b.length) : 0
@@ -838,6 +907,11 @@ function beatsOf(t) {
   out.forEach(function (p) { if (merged.length && normSay(p).length < 8) merged[merged.length - 1] += p; else merged.push(p); });
   if (merged.length > 1 && normSay(merged[0]).length < 8) { merged[1] = merged[0] + merged[1]; merged.shift(); }
   return normSay(t).length <= 45 ? [t] : merged;
+}
+/* 赤ペンは色だけに頼らない：言えた＝細い下線、抜けた＝▲印＋波線＋太字、余計＝＋印＋取り消し線 */
+var PEN_LEGEND = '<small class="legend"><span class="d-ok">言えた</span> <span class="d-ng">抜けた・ちがう</span> <span class="d-x">余計</span></small>';
+function penCount(pen) {
+  return '<span class="pen-count">' + (pen.miss ? '<span class="pc-ng">▲ 抜け ' + pen.miss + '字</span>' : '<span class="pc-ok">✓ 抜けなし</span>') + (pen.extra ? '<span class="pc-x">＋ 余計 ' + pen.extra + '字</span>' : '') + '</span>';
 }
 var STRICT = { loose: { thr: 0.65, label: '意味が合えばOK（覚え始め）' }, normal: { thr: 0.8, label: 'ふつう' }, strict: { thr: 0.92, label: 'てにをはまで正確に（本番前）' } };
 
@@ -916,6 +990,7 @@ function learnMenu(id, me, lines) {
     '<a class="mode" href="#/w/' + esc(id) + '/voice"><span><b>声の差し入れ</b><small>自分のセリフを録音すると、相手役の練習であなたの声が流れます</small></span></a></div>' +
     '<p style="text-align:center;margin:8px 0 14px"><a class="btn quiet sm" href="#/w/' + esc(id) + '/print">自分のセリフに印を付けて印刷</a></p>' +
     '<details class="card lopts"><summary>練習のしかた</summary>' +
+    '<div class="f"><span class="flabel">文字の大きさ</span><div class="rolepick" data-fsrow>' + [['m', '標準'], ['l', '大'], ['xl', '特大']].map(function (o) { return '<button type="button" class="rchip' + (store.get('fontSize', 'm') === o[0] ? ' on' : '') + '" data-fs="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
     optRow('kuroko', '黒子モード（歩きながら練習）', [['off', 'つかわない'], ['on', 'つかう']], opt) +
     '<p class="note">黒子モードでは、詰まったときに画面のどこかを押すと、黒子がセリフの頭を小声でささやきます。</p>' +
     optRow('strict', '判定のきびしさ', [['loose', STRICT.loose.label], ['normal', STRICT.normal.label], ['strict', STRICT.strict.label]], opt) +
@@ -924,6 +999,8 @@ function learnMenu(id, me, lines) {
     optRow('dir', 'ト書き', [['skip', '飛ばす'], ['show', '文字で出す'], ['read', '読み上げる']], opt) +
     '<p class="note">相手のセリフは、録音と対応づけられていれば録音で流れます。</p></details>';
   main.querySelector('.lopts').onclick = function (e) {
+    var f = e.target.closest('[data-fs]');
+    if (f) { store.set('fontSize', f.dataset.fs); applyFontSize(); f.parentNode.querySelectorAll('.rchip').forEach(function (c) { c.classList.toggle('on', c === f); }); return; }
     var b = e.target.closest('[data-v]'); if (!b) return;
     var g = b.parentNode; opt[g.dataset.o] = b.dataset.v; store.set('learnOpt', opt);
     g.querySelectorAll('.rchip').forEach(function (c) { c.classList.toggle('on', c === b); });
@@ -1063,7 +1140,7 @@ function learnRun(id, me, seq, isMine, opt, title) {
         (beats.length > 1 ? '<p class="beatinfo">ビート ' + Math.min(bi + 1, beats.length) + ' / ' + beats.length + '（区切りごとに言えばOK）</p>' : '') +
         (opt.kuroko === 'on' ? '<p class="beatinfo">詰まったら、画面のどこかを押すと黒子がささやきます</p>' : '') + (extra || '');
     };
-    var stopRec = function () { try { if (learn.rec) learn.rec.abort(); } catch (e) { } learn.rec = null; };
+    var stopRec = function () { clearTimeout(learn.watch); try { if (learn.rec) learn.rec.abort(); } catch (e) { } learn.rec = null; };
     var result = function (ok, auto) {
       if (finished) return; finished = true; stopRec();
       done++; if (ok) good++; var x = markStudy(id, l.id, ok); prog();
@@ -1079,8 +1156,8 @@ function learnRun(id, me, seq, isMine, opt, title) {
       var pen = redPen(heard, l.t), ok = sc2 >= thr;
       card.className = 'lrn-card ' + (ok ? 'good' : 'bad');
       card.innerHTML = '<span class="lnchip" style="--c:' + roleColor(l.r) + '">' + esc(who(l)) + '（あなた）</span><p class="lrn-t pen">' + pen.text + '</p>' +
-        '<div class="lrn-res"><b>' + (sc2 >= 0.95 ? 'ばっちり！' : ok ? 'いいね！' : sc2 >= 0.5 ? 'おしい！' : 'もう一度！') + '</b> ' + Math.round(sc2 * 100) + '%' +
-        '<small>聞こえた言葉：' + (pen.heard || '（なし）') + '</small><small class="legend"><span class="d-ok">言えた</span> <span class="d-ng">抜けた・ちがう</span> <span class="d-x">余計</span></small></div>';
+        '<div class="lrn-res"><b>' + (ok ? '✓ ' : '✗ ') + (sc2 >= 0.95 ? 'ばっちり！' : ok ? 'いいね！' : sc2 >= 0.5 ? 'おしい！' : 'もう一度！') + '</b> ' + Math.round(sc2 * 100) + '%' +
+        penCount(pen) + '<small>聞こえた言葉：' + (pen.heard || '（なし）') + '</small>' + PEN_LEGEND + '</div>';
       return ok;
     };
     var selfJudge = function () {
@@ -1126,20 +1203,31 @@ function learnRun(id, me, seq, isMine, opt, title) {
     var listen = function () {
       if (!learn.on || finished) return;
       if (!(opt.judge === 'voice' && SR)) { drawCard(); ctrl.innerHTML = '<p class="note">声に出して言ってみよう</p>'; controls(''); return; }
-      drawCard(); controls('🎤 どうぞ' + (beats.length > 1 && bi > 0 ? '（続きから）' : ''));
-      var mic = document.getElementById('lrnMic'); mic.classList.add('on');
+      drawCard(); controls('<span class="mic-dot" aria-hidden="true"></span><span class="mic-l">聞いています' + (beats.length > 1 && bi > 0 ? '（続きから）' : '') + '</span><span class="mic-h" id="lrnHeard"></span>');
+      var mic = document.getElementById('lrnMic'); mic.classList.add('on'); mic.setAttribute('role', 'status'); mic.setAttribute('aria-live', 'polite');
       var rec = new SR(); learn.rec = rec;
       rec.lang = 'ja-JP'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 3;
       var heard = '', fired = false;
+      /* 見張り番：9秒なにも返ってこなければ、マイクが止まったとみなして知らせる。
+         話している途中なら、最後の声から9秒で区切って判定する */
+      var watch = function () {
+        clearTimeout(learn.watch);
+        learn.watch = setTimeout(function () {
+          if (fired || learn.rec !== rec || finished) return;
+          if (heard) { try { rec.stop(); } catch (e) { } learn.watch = setTimeout(function () { if (!fired && learn.rec === rec) { try { rec.onend(); } catch (e) { } } }, 1500); return; }
+          fired = true; stopRec(); stalled();
+        }, 9000);
+      };
       rec.onresult = function (ev) {
         var t = ''; for (var i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
-        heard = t; var m = document.getElementById('lrnMic'); if (m) m.textContent = '🎤 ' + t;
+        heard = t; var m = document.getElementById('lrnHeard'); if (m) m.textContent = t;
+        watch();
       };
       rec.onerror = function (ev) {
         if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { fired = true; toast('マイクが使えないので、自分で〇×にします'); opt.judge = 'self'; store.set('learnOpt', opt); selfJudge(); }
       };
       rec.onend = function () {
-        if (fired || learn.rec !== rec || !learn.on || finished) return; fired = true; learn.rec = null;
+        if (fired || learn.rec !== rec || !learn.on || finished) return; fired = true; learn.rec = null; clearTimeout(learn.watch);
         if (!heard) { waitTap('🎤 聞こえませんでした', 'もう一度話す'); return; }
         var r = judgeBeats(heard);
         if (bi >= beats.length) {
@@ -1151,10 +1239,17 @@ function learnRun(id, me, seq, isMine, opt, title) {
         if (r) { drawCard(); waitTap('いいね！ 続きをどうぞ', '続きを話す', true); return; }
         /* 今のビートが言えなかった：そのビートを赤ペンで見せて、言い直し */
         var pen = redPen(heard, beats[bi]);
-        drawCard('<div class="lrn-res"><b>おしい！</b> ' + Math.round(pen.score * 100) + '%<small>このビート：</small><p class="pen">' + pen.text + '</p><small>聞こえた言葉：' + pen.heard + '</small></div>');
+        drawCard('<div class="lrn-res"><b>✗ おしい！</b> ' + Math.round(pen.score * 100) + '%' + penCount(pen) + '<small>このビート：</small><p class="pen">' + pen.text + '</p><small>聞こえた言葉：' + pen.heard + '</small>' + PEN_LEGEND + '</div>');
         waitTap('', 'もう一度話す');
       };
-      try { rec.start(); } catch (e) { waitTap('', '話す'); }
+      try { rec.start(); watch(); } catch (e) { waitTap('', '話す'); }
+    };
+    /* マイクが止まったときの案内：ワンタップで聞き直すか、自分で〇×に切り替える */
+    var stalled = function () {
+      ctrl.innerHTML = '<div class="mic stall" role="alert"><span class="mic-l">マイクが止まっているかもしれません</span></div>' +
+        '<button class="btn brand" id="lrnRetry">🎤 タップで聞き直す</button><button class="btn quiet" id="lrnToSelf">自分で〇×に切り替える</button>';
+      document.getElementById('lrnRetry').onclick = function (e) { e.stopPropagation(); listen(); };
+      document.getElementById('lrnToSelf').onclick = function (e) { e.stopPropagation(); opt.judge = 'self'; store.set('learnOpt', opt); toast('このあとは自分で〇×にします（練習のしかたで戻せます）'); selfJudge(); };
     };
     /* iPhoneは、自動でマイクを続けて使えないことがあるので、ボタン（または画面）を押して再開する */
     var waitTap = function (msg, label, tryAuto) {
@@ -1423,7 +1518,7 @@ function boardPost(workId, kind, text) {
   api('boardPost', { kind: kind, text: text || '', workId: workId, asMember: true }).then(function () { sent[tag] = 1; store.set(key, sent); }).catch(function () { });
 }
 function boardCard(w) {
-  return '<h2 class="sec-t">楽屋ボード</h2><div class="card board" id="board">' + (boardOn(w.id) ? loading() :
+  return '<h2 class="sec-t">楽屋ボード</h2><div class="card kboard" id="board">' + (boardOn(w.id) ? loading() :
     '<p>参加している人どうしで、「今日稽古した」「〇場が満開になった」が見えるボードです。数字や順位は出ません。</p>' +
     '<p class="note">参加すると、あなたの名前と上の2つだけが、参加した人に見えます。いつでも抜けられます（抜けると書き込みも消えます）。</p>' +
     '<button class="btn brand" id="boardJoin">参加する</button>') + '</div>';
@@ -3628,6 +3723,7 @@ function route() {
   return viewDoor();
 }
 window.addEventListener('hashchange', route);
+applyFontSize();
 splash();
 route();
 })();

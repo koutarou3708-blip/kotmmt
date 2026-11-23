@@ -1,6 +1,6 @@
 /* 台本読み合わせ練習アプリ：画面の部品を端末に保存し、電波がなくても開けるようにする。
    画面を更新したら VERSION の数字を1つ上げてください。 */
-const VERSION = 'gakuya-v0.10.0';
+const VERSION = 'gakuya-v0.11.0';
 const SHELL = ['./', 'index.html', 'style.css', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/logo.png'];
 
