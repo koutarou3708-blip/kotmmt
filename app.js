@@ -695,43 +695,99 @@ function stopLearn() {
   try { if (learn.wake) learn.wake.release(); } catch (e) { } learn.wake = null;
   if (learn.audio) { learn.audio.pause(); }
 }
-/* 練習の記録（行のIDごと）。苦手だけの練習と楽屋花に使う */
-function studyOf(workId) { return store.get('study.' + workId, {}); }
-function markStudy(workId, id, good) {
-  var st = studyOf(workId), x = st[id] || { ok: 0, ng: 0 };
-  if (good) x.ok++; else x.ng++;
-  x.last = good ? 1 : 0; x.at = Date.now(); st[id] = x; store.set('study.' + workId, st);
+/* ---- 熟練度（間隔をあけて復習する）：種 → 芽 → つぼみ → 満開 ---- */
+var LEVELS = ['種', '芽', 'つぼみ', '満開'];
+var GAP_DAYS = [0, 1, 3, 7, 14];
+function studyOf(workId) {
+  var st = store.get('study.' + workId, {});
+  Object.keys(st).forEach(function (k) { var x = st[k]; if (x.level === undefined) { x.level = x.last ? 1 : 0; x.streak = x.last ? 1 : 0; x.next = x.at || 0; } });
+  return st;
 }
+function markStudy(workId, id, good) {
+  var st = studyOf(workId), x = st[id] || { ok: 0, ng: 0, level: 0, streak: 0 }, now = Date.now();
+  if (good) { x.ok++; x.streak++; x.level = Math.min(4, (x.level || 0) + 1); x.next = now + GAP_DAYS[Math.min(4, x.level)] * 86400000; }
+  else { x.ng++; x.streak = 0; x.level = Math.max(0, (x.level || 0) - 1); x.next = now; }
+  x.last = good ? 1 : 0; x.at = now; st[id] = x; store.set('study.' + workId, st);
+  return x;
+}
+/* 4段階の表示用：記録なし＝-1、0〜3 */
+function stageOf(x) { if (!x) return -1; return [0, 1, 1, 2, 3][Math.min(4, x.level || 0)]; }
 function flowerRow(workId) {
   var cache = store.get('learnScenes.' + workId, null);
   if (!cache || !cache.length) return [0, 1, 2, 3].map(ART.vase).join('');
   var st = studyOf(workId);
   return cache.slice(0, 8).map(function (sc, i) {
-    var ok = sc.ids.filter(function (id) { return st[id] && st[id].last; }).length, rate = sc.ids.length ? ok / sc.ids.length : 0;
+    var sum = 0; sc.ids.forEach(function (id) { sum += Math.min(4, (st[id] && st[id].level) || 0) / 4; });
+    var rate = sc.ids.length ? sum / sc.ids.length : 0;
     return '<span class="fl" title="' + esc(sc.name) + '">' + ART.vase(i).replace('opacity=".35"', 'opacity="' + (0.2 + rate * 0.8).toFixed(2) + '"').replace('r="6"', 'r="' + (4 + rate * 7).toFixed(1) + '"') +
       '<small>' + esc(sc.name.slice(0, 6)) + '</small><b>' + Math.round(rate * 100) + '%</b></span>';
   }).join('');
 }
-/* 言えたかの判定：ひらがなにそろえて、記号を外してから、同じ文字の並びがどれだけあるかで比べる */
+/* ---- 言えたかの判定と、赤ペン（どこを間違えたか） ---- */
 function normSay(t) {
   return String(t || '').normalize('NFKC').replace(/[ァ-ヶ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0x60); })
     .replace(/[\s、。，．,.・！？!?「」『』（）()［］\[\]…‥ー―〜~\-—：:；;"'“”‘’]/g, '');
 }
-function sayScore(heard, line) {
+function lcsTable(a, b) {
+  var m = a.length, n = b.length, T = new Uint16Array((m + 1) * (n + 1)), w = n + 1;
+  for (var i = 1; i <= m; i++) for (var j = 1; j <= n; j++)
+    T[i * w + j] = a[i - 1] === b[j - 1] ? T[(i - 1) * w + j - 1] + 1 : Math.max(T[(i - 1) * w + j], T[i * w + j - 1]);
+  return { T: T, w: w, len: T[m * w + n] };
+}
+function sayScore(heard, target) {
   var a = normSay(heard), best = 0;
-  [normSay(line.t), normSay(line.y)].forEach(function (b) {
-    if (!b || !a) return;
-    var m = a.length, n = b.length, prev = new Array(n + 1).fill(0), cur;
-    for (var i = 1; i <= m; i++) {
-      cur = new Array(n + 1).fill(0);
-      for (var j = 1; j <= n; j++) cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
-      prev = cur;
-    }
-    var lcs = prev[n], f = 2 * lcs / (m + n);
-    best = Math.max(best, f);
+  [target.t, target.y].forEach(function (src) {
+    var b = normSay(src); if (!a || !b) return;
+    best = Math.max(best, 2 * lcsTable(a, b).len / (a.length + b.length));
   });
   return best;
 }
+/* 台本の字ごとに「言えた／抜けた」、聞こえた字ごとに「余計」を返す */
+function redPen(heard, text) {
+  var map = [], b = '';
+  Array.from(text).forEach(function (ch, i) { var n = normSay(ch); for (var k = 0; k < n.length; k++) { map.push(i); b += n[k]; } });
+  var hChars = Array.from(heard || ''), hMap = [], a = '';
+  hChars.forEach(function (ch, i) { var n = normSay(ch); for (var k = 0; k < n.length; k++) { hMap.push(i); a += n[k]; } });
+  var L = lcsTable(a, b), okB = {}, okA = {}, i = a.length, j = b.length;
+  while (i > 0 && j > 0) {
+    if (a[i - 1] === b[j - 1]) { okB[j - 1] = 1; okA[i - 1] = 1; i--; j--; }
+    else if (L.T[(i - 1) * L.w + j] >= L.T[i * L.w + j - 1]) i--; else j--;
+  }
+  var tState = Array.from(text).map(function () { return 'p'; });
+  map.forEach(function (orig, k) { tState[orig] = tState[orig] === 'p' ? (okB[k] ? 'ok' : 'ng') : (tState[orig] === 'ok' && okB[k] ? 'ok' : 'ng'); });
+  var hState = hChars.map(function () { return 'p'; });
+  hMap.forEach(function (orig, k) { hState[orig] = okA[k] ? 'ok' : 'x'; });
+  var paint = function (chars, states, cls) {
+    var out = '', cur = null, buf = '';
+    chars.forEach(function (ch, k) { var s2 = states[k] === 'p' ? (cur || 'ok') : states[k]; if (s2 !== cur && buf) { out += '<span class="' + cls[cur] + '">' + esc(buf) + '</span>'; buf = ''; } cur = s2; buf += ch; });
+    if (buf) out += '<span class="' + cls[cur] + '">' + esc(buf) + '</span>';
+    return out;
+  };
+  return {
+    text: paint(Array.from(text), tState, { ok: 'd-ok', ng: 'd-ng' }),
+    heard: paint(hChars, hState, { ok: '', x: 'd-x' }),
+    score: (a.length + b.length) ? 2 * L.len / (a.length + b.length) : 0
+  };
+}
+/* 長いセリフは「ビート」（句点などの意味の切れ目）に分ける */
+function beatsOf(t) {
+  var parts = String(t).match(/[^。！？!?]+[。！？!?」』）)]*|[。！？!?」』）)]+/g) || [t];
+  var out = [];
+  parts.forEach(function (p) {
+    if (normSay(p).length > 50 && p.indexOf('、') >= 0) {
+      var chunk = '';
+      p.split(/(?<=、)/).forEach(function (q) { if (chunk && normSay(chunk + q).length > 40) { out.push(chunk); chunk = ''; } chunk += q; });
+      if (chunk) out.push(chunk);
+    } else out.push(p);
+  });
+  /* 短すぎるものは前とまとめる */
+  var merged = [];
+  out.forEach(function (p) { if (merged.length && normSay(p).length < 8) merged[merged.length - 1] += p; else merged.push(p); });
+  if (merged.length > 1 && normSay(merged[0]).length < 8) { merged[1] = merged[0] + merged[1]; merged.shift(); }
+  return normSay(t).length <= 45 ? [t] : merged;
+}
+var STRICT = { loose: { thr: 0.65, label: '意味が合えばOK（覚え始め）' }, normal: { thr: 0.8, label: 'ふつう' }, strict: { thr: 0.92, label: 'てにをはまで正確に（本番前）' } };
+
 function viewLearn(id) {
   var me = store.get('me.' + id, null);
   if (!store.get('passes', {})[id] || !me) { go('/w/' + id); return; }
@@ -754,7 +810,6 @@ function learnMenu(id, me, lines) {
   var main = document.getElementById('lrn'); if (!main) return;
   var mine = me.actor.roles || [];
   var isMine = function (l) { return l.k === 'line' && (l.rs || [l.r]).some(function (r) { return mine.indexOf(r) >= 0; }); };
-  /* 幕・場ごとに分ける（見出しがなければ全体で1つ） */
   var scenes = [], cur = { name: '最初から', start: 0, ids: [] };
   lines.forEach(function (l, i) {
     if (l.k === 'scene') { if (i > 0 || cur.ids.length) scenes.push(cur); cur = { name: l.t, start: i, ids: [] }; }
@@ -763,28 +818,38 @@ function learnMenu(id, me, lines) {
   scenes.push(cur);
   scenes = scenes.filter(function (sc, i) { return i > 0 || sc.ids.length || scenes.length === 1; });
   store.set('learnScenes.' + id, scenes.map(function (s2) { return { name: s2.name, ids: s2.ids }; }));
-  var st = studyOf(id), total = lines.filter(isMine).length;
-  var weak = lines.filter(function (l) { return isMine(l) && st[l.id] && !st[l.id].last; }).length;
-  var opt = store.get('learnOpt', { other: window.speechSynthesis ? 'tts' : 'auto', judge: (window.SpeechRecognition || window.webkitSpeechRecognition) ? 'voice' : 'self', dir: 'skip', rate: 1.1 });
+  var st = studyOf(id), myLines = lines.filter(isMine), total = myLines.length, now = Date.now();
+  var opt = Object.assign({ other: window.speechSynthesis ? 'tts' : 'auto', judge: (window.SpeechRecognition || window.webkitSpeechRecognition) ? 'voice' : 'self', dir: 'skip', rate: 1.1, strict: 'normal', kuroko: 'off' }, store.get('learnOpt', {}));
   if (!total) {
     main.innerHTML = '<div class="card"><p>あなたの役（' + esc(mine.join('、') || '未定') + '）のセリフが、割り振りの中に見つかりませんでした。</p><p class="note">配役か割り振りが変わったかもしれません。舞台監督に確かめてください。</p></div>';
     return;
   }
-  main.innerHTML = '<div class="say hello">' + ART.sheep('happy') + '<div class="bubble">' + esc(me.actor.name) + 'さんのセリフは ' + total + ' 個。どこから練習する？</div></div>' +
-    '<div class="scenes">' + scenes.map(function (sc, i) {
-      var ok = sc.ids.filter(function (x) { return st[x] && st[x].last; }).length;
-      return '<button class="mode scene-pick" data-s="' + i + '"><span><b>' + esc(sc.name) + '</b><small>あなたのセリフ ' + sc.ids.length + ' 個・言えた ' + ok + ' 個</small></span><span class="pct">' + (sc.ids.length ? Math.round(ok / sc.ids.length * 100) : 0) + '%</span></button>';
+  /* 今日の10本ノック：①最近言えなかった（間違いが多い順）②復習の時期が来た ③まだ練習していない（台本の順） */
+  var weak = myLines.filter(function (l) { return st[l.id] && !st[l.id].last; }).sort(function (a, b) { return st[b.id].ng - st[a.id].ng; });
+  var due = myLines.filter(function (l) { return st[l.id] && st[l.id].last && (st[l.id].next || 0) <= now; }).sort(function (a, b) { return (st[a.id].next || 0) - (st[b.id].next || 0); });
+  var fresh = myLines.filter(function (l) { return !st[l.id]; });
+  var knock = weak.concat(due, fresh).slice(0, 10);
+  var counts = [0, 0, 0, 0], none = 0;
+  myLines.forEach(function (l) { var g = stageOf(st[l.id]); if (g < 0) none++; else counts[g]++; });
+  main.innerHTML = '<div class="say hello">' + ART.sheep('happy') + '<div class="bubble">' + esc(me.actor.name) + 'さんのセリフは ' + total + ' 個。' +
+    (knock.length ? '今日の10本ノックを用意したよ。' : '今日の復習はおしまい。えらい！') + '</div></div>' +
+    '<div class="stagebar" aria-label="覚え具合">' + LEVELS.map(function (nm, i) { return '<span class="sg sg' + i + '" style="flex:' + (counts[i] || 0.0001) + '">' + (counts[i] ? nm + ' ' + counts[i] : '') + '</span>'; }).join('') +
+    (none ? '<span class="sg sgn" style="flex:' + none + '">未練習 ' + none + '</span>' : '') + '</div>' +
+    '<div class="scenes">' +
+    (knock.length ? '<button class="mode scene-pick knock" data-s="knock"><span><b>今日の10本ノック</b><small>' + knock.length + '本・3分くらい（苦手 ' + Math.min(weak.length, 10) + '／復習 ' + Math.min(due.length, Math.max(0, 10 - weak.length)) + '）</small></span><span class="pct">▶</span></button>' : '') +
+    scenes.map(function (sc, i) {
+      var sum = 0; sc.ids.forEach(function (x) { sum += Math.min(4, (st[x] && st[x].level) || 0) / 4; });
+      return '<button class="mode scene-pick" data-s="' + i + '"><span><b>' + esc(sc.name) + '</b><small>あなたのセリフ ' + sc.ids.length + ' 個</small></span><span class="pct">' + (sc.ids.length ? Math.round(sum / sc.ids.length * 100) : 0) + '%</span></button>';
     }).join('') +
-    (scenes.length > 1 ? '<button class="mode scene-pick all" data-s="all"><span><b>通しで練習</b><small>はじめから最後まで</small></span></button>' : '') +
-    (weak ? '<button class="mode scene-pick weak" data-s="weak"><span><b>苦手だけ</b><small>前に言えなかったセリフ ' + weak + ' 個</small></span></button>' : '') + '</div>' +
+    (scenes.length > 1 ? '<button class="mode scene-pick all" data-s="all"><span><b>通しで練習</b><small>はじめから最後まで</small></span></button>' : '') + '</div>' +
     '<details class="card lopts"><summary>練習のしかた</summary>' +
-    '<div class="f"><span class="flabel">相手のセリフ</span><div class="rolepick" data-o="other">' +
-      [['tts', '読み上げる'], ['auto', '文字だけ（自動で進む）'], ['tap', '文字だけ（自分で進める）']].map(function (o) { return '<button type="button" class="rchip' + (opt.other === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
-    '<div class="f"><span class="flabel">言えたかの確かめ方</span><div class="rolepick" data-o="judge">' +
-      [['voice', '声で判定'], ['self', '自分で〇×']].map(function (o) { return '<button type="button" class="rchip' + (opt.judge === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
-    '<div class="f"><span class="flabel">ト書き</span><div class="rolepick" data-o="dir">' +
-      [['skip', '飛ばす'], ['show', '文字で出す'], ['read', '読み上げる']].map(function (o) { return '<button type="button" class="rchip' + (opt.dir === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
-    '<p class="note">相手のセリフは、録音と対応づけられていれば録音で流れます（舞台監督の準備しだい）。</p></details>';
+    optRow('kuroko', '黒子モード（歩きながら練習）', [['off', 'つかわない'], ['on', 'つかう']], opt) +
+    '<p class="note">黒子モードでは、詰まったときに画面のどこかを押すと、黒子がセリフの頭を小声でささやきます。</p>' +
+    optRow('strict', '判定のきびしさ', [['loose', STRICT.loose.label], ['normal', STRICT.normal.label], ['strict', STRICT.strict.label]], opt) +
+    optRow('other', '相手のセリフ', [['tts', '読み上げる'], ['auto', '文字だけ（自動で進む）'], ['tap', '文字だけ（自分で進める）']], opt) +
+    optRow('judge', '言えたかの確かめ方', [['voice', '声で判定'], ['self', '自分で〇×']], opt) +
+    optRow('dir', 'ト書き', [['skip', '飛ばす'], ['show', '文字で出す'], ['read', '読み上げる']], opt) +
+    '<p class="note">相手のセリフは、録音と対応づけられていれば録音で流れます。</p></details>';
   main.querySelector('.lopts').onclick = function (e) {
     var b = e.target.closest('[data-v]'); if (!b) return;
     var g = b.parentNode; opt[g.dataset.o] = b.dataset.v; store.set('learnOpt', opt);
@@ -792,17 +857,30 @@ function learnMenu(id, me, lines) {
   };
   main.querySelector('.scenes').onclick = function (e) {
     var b = e.target.closest('.scene-pick'); if (!b) return;
-    var v = b.dataset.s, seq;
-    if (v === 'all') seq = lines.slice();
-    else if (v === 'weak') seq = lines.filter(function (l) { return isMine(l) && st[l.id] && !st[l.id].last; });
-    else { var sc = scenes[+v], end = scenes[+v + 1] ? scenes[+v + 1].start : lines.length; seq = lines.slice(sc.start, end); }
-    learnRun(id, me, seq, isMine, opt, v === 'weak' ? '苦手だけ' : v === 'all' ? '通し' : scenes[+v].name);
+    var v = b.dataset.s, seq, title;
+    if (v === 'knock') {
+      /* 1本ごとに、直前のセリフ（きっかけ）を付けて出す */
+      seq = []; knock.forEach(function (l) {
+        var i = lines.indexOf(l), cue = null;
+        for (var k = i - 1; k >= 0; k--) { if (lines[k].k === 'line' || lines[k].k === 'dir') { cue = lines[k]; break; } if (lines[k].k === 'scene') break; }
+        if (cue && !isMine(cue)) seq.push(Object.assign({}, cue, { _cue: true }));
+        seq.push(l);
+      });
+      title = '今日の10本ノック';
+    } else if (v === 'all') { seq = lines.slice(); title = '通し'; }
+    else { var sc = scenes[+v], end = scenes[+v + 1] ? scenes[+v + 1].start : lines.length; seq = lines.slice(sc.start, end); title = sc.name; }
+    learnRun(id, me, seq, isMine, opt, title);
   };
+}
+function optRow(key, label, items, opt) {
+  return '<div class="f"><span class="flabel">' + label + '</span><div class="rolepick" data-o="' + key + '">' +
+    items.map(function (o) { return '<button type="button" class="rchip' + (opt[key] === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
 }
 function learnRun(id, me, seq, isMine, opt, title) {
   var main = document.getElementById('lrn'); if (!main) return;
   stopLearn(); learn.on = true;
   try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function (w) { learn.wake = w; }).catch(function () { }); } catch (e) { }
+  var thr = (STRICT[opt.strict] || STRICT.normal).thr;
   var mineCount = seq.filter(isMine).length, done = 0, good = 0, idx = -1;
   var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   var voice = null;
@@ -811,20 +889,27 @@ function learnRun(id, me, seq, isMine, opt, title) {
   main.innerHTML = '<div class="lrn-top"><b>' + esc(title) + '</b><span id="lrnProg"></span><button class="btn quiet sm" id="lrnQuit">やめる</button></div>' +
     '<div class="lrn-prev" id="lrnPrev"></div><div class="lrn-card" id="lrnCard"></div><div class="lrn-ctrl" id="lrnCtrl"></div>';
   var card = document.getElementById('lrnCard'), ctrl = document.getElementById('lrnCtrl'), prevBox = document.getElementById('lrnPrev');
-  var prog = function () { document.getElementById('lrnProg').textContent = 'あなたのセリフ ' + done + ' / ' + mineCount + (done ? '・言えた ' + good : ''); };
+  var prog = function () { var el = document.getElementById('lrnProg'); if (el) el.textContent = 'あなたのセリフ ' + done + ' / ' + mineCount + (done ? '・言えた ' + good : ''); };
   document.getElementById('lrnQuit').onclick = function () { stopLearn(); viewLearn(id); };
-  var speak = function (text, then) {
+  /* 役ごとに声の高さと速さを少し変えて、掛け合いを聞き分けやすくする */
+  var voiceFor = function (name) {
+    var h = 0; String(name || '').split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
+    return { pitch: 0.8 + (h % 9) * 0.06, rate: (opt.rate || 1.1) * (0.9 + ((h >> 4) % 5) * 0.05) };
+  };
+  var speak = function (text, then, v, small) {
     try {
       speechSynthesis.cancel();
-      var u = new SpeechSynthesisUtterance(text); u.lang = 'ja-JP'; if (voice) u.voice = voice; u.rate = opt.rate || 1.1;
-      var fin = false, end = function () { if (fin) return; fin = true; if (learn.on) then(); };
+      var u = new SpeechSynthesisUtterance(text); u.lang = 'ja-JP'; if (voice) u.voice = voice;
+      u.rate = v ? v.rate : (opt.rate || 1.1); u.pitch = v ? v.pitch : 1; if (small) { u.volume = 0.6; u.rate = 1.35; u.pitch = 0.8; }
+      var fin = false, end = function () { if (fin) return; fin = true; clearTimeout(learn.timer); if (learn.on && then) then(); };
       u.onend = end; u.onerror = end;
       speechSynthesis.speak(u);
-      learn.timer = setTimeout(end, 2500 + text.length * 260); /* 読み上げが止まってしまったときの保険 */
-    } catch (e) { then(); }
+      learn.timer = setTimeout(end, 2500 + text.length * 260);
+    } catch (e) { if (then) then(); }
   };
+  /* ト書きの長さや「……」に合わせて、少し間をとる */
+  var pauseFor = function (l) { var m = (l.t.match(/…|‥/g) || []).length; return Math.min(1800, 250 + m * 350); };
   var playClip = function (l, then) {
-    /* 録音と対応づいていれば、その区間を流す */
     var a = l.audio, au = (me.audios || []).filter(function (x) { return a && x.id === a.audioId; })[0];
     if (!a || !au) return false;
     scriptBlob(Object.assign({ workId: id }, au), null, 'audio', true).then(function (blob) {
@@ -837,11 +922,10 @@ function learnRun(id, me, seq, isMine, opt, title) {
     }).catch(function () { then(); });
     return true;
   };
-  var show = function (l, hidden) {
-    var who = l.k === 'line' ? (l.rs && l.rs.length > 1 ? l.rs.join('・') : l.r) : l.k === 'dir' ? 'ト書き' : '';
-    card.className = 'lrn-card k-' + l.k + (hidden ? ' mine' : '');
-    card.innerHTML = (who ? '<span class="lnchip" style="--c:' + (l.k === 'line' ? roleColor(l.r) : '#E7E1D4') + '">' + esc(who) + '</span>' : '') +
-      '<p class="lrn-t">' + (hidden ? '<span class="mask">' + esc(l.t.replace(/[^\s、。！？]/g, '○')) + '</span>' : esc(l.t)) + '</p>';
+  var who = function (l) { return l.k === 'line' ? (l.rs && l.rs.length > 1 ? l.rs.join('・') : l.r) : l.k === 'dir' ? 'ト書き' : ''; };
+  var showOther = function (l) {
+    card.className = 'lrn-card k-' + l.k + (l._cue ? ' cue' : '');
+    card.innerHTML = (l._cue ? '<small class="cuetag">きっかけ</small>' : '') + (who(l) ? '<span class="lnchip" style="--c:' + (l.k === 'line' ? roleColor(l.r) : '#E7E1D4') + '">' + esc(who(l)) + '</span>' : '') + '<p class="lrn-t">' + esc(l.t) + '</p>';
   };
   var next = function () {
     if (!learn.on) return;
@@ -851,53 +935,98 @@ function learnRun(id, me, seq, isMine, opt, title) {
     var l = seq[idx];
     if (l.k === 'skip') return next();
     if (l.k === 'scene') { prevBox.innerHTML = ''; card.className = 'lrn-card k-scene'; card.innerHTML = '<p class="lrn-t">' + esc(l.t) + '</p>'; ctrl.innerHTML = ''; learn.timer = setTimeout(next, 1400); return; }
-    if (l.k === 'dir' && opt.dir === 'skip') return next();
-    if (isMine(l)) return myTurn(l);
-    show(l, false); prog();
+    if (l.k === 'dir' && opt.dir === 'skip' && !l._cue) return next();
+    if (isMine(l) && !l._cue) return myTurn(l);
+    prevBox.innerHTML = ''; showOther(l); prog();
     ctrl.innerHTML = '<button class="btn quiet" id="lrnSkip">次へ ›</button>';
     document.getElementById('lrnSkip').onclick = function () { try { speechSynthesis.cancel(); } catch (e) { } if (learn.audio) learn.audio.pause(); next(); };
-    if (l.k === 'line' && playClip(l, next)) return;
+    var after = function () { learn.timer = setTimeout(next, pauseFor(l)); };
+    if (l.k === 'line' && playClip(l, after)) return;
     var mode = l.k === 'dir' ? (opt.dir === 'read' ? 'tts' : 'auto') : opt.other;
-    if (mode === 'tts' && window.speechSynthesis) speak(l.t, next);
+    if (mode === 'tts' && window.speechSynthesis) speak(l.t, after, l.k === 'line' ? voiceFor(l.r) : { pitch: 1, rate: (opt.rate || 1.1) * 1.1 });
     else if (mode === 'auto') learn.timer = setTimeout(next, 900 + l.t.length * 160);
   };
+  /* ---- 自分の番：ビートごとに言っていく ---- */
   var myTurn = function (l) {
     var prevLine = seq[idx - 1];
     prevBox.innerHTML = prevLine && prevLine.k !== 'scene' ? '<small>きっかけ</small>' + esc(prevLine.t.slice(-40)) : '';
-    show(l, true); prog();
-    var hint = 0;
-    var judge = function (heard) {
-      var sc2 = sayScore(heard, l), ok = sc2 >= 0.8;
-      card.classList.add(ok ? 'good' : 'bad'); card.querySelector('.lrn-t').innerHTML = esc(l.t);
-      card.insertAdjacentHTML('beforeend', '<div class="lrn-res"><b>' + (sc2 >= 0.92 ? 'ばっちり！' : ok ? 'いいね！' : sc2 >= 0.5 ? 'おしい！' : 'もう一度！') + '</b> ' + Math.round(sc2 * 100) + '%' +
-        (heard ? '<small>聞こえた言葉：' + esc(heard) + '</small>' : '') + '</div>');
-      result(ok, true);
-    };
-    var result = function (ok, auto) {
-      done++; if (ok) good++; markStudy(id, l.id, ok); prog();
-      ctrl.innerHTML = '<button class="btn quiet" id="lrnAgain">もう一度</button><button class="btn brand" id="lrnNext">次へ ›</button>';
-      document.getElementById('lrnAgain').onclick = function () { done--; if (ok) good--; idx--; next(); };
-      document.getElementById('lrnNext').onclick = function () { next(); };
-      if (ok && auto) learn.timer = setTimeout(next, 1600);
-    };
-    var hintBtn = '<button class="btn quiet sm" id="lrnHint">ヒント</button><button class="btn quiet sm" id="lrnShow">答えを見る</button>';
-    var bindHint = function () {
-      document.getElementById('lrnHint').onclick = function () {
-        hint = Math.min(l.t.length, hint + Math.max(2, Math.ceil(l.t.length / 6)));
-        card.querySelector('.lrn-t').innerHTML = esc(l.t.slice(0, hint)) + '<span class="mask">' + esc(l.t.slice(hint).replace(/[^\s、。！？]/g, '○')) + '</span>';
-      };
-      document.getElementById('lrnShow').onclick = function () { stopRec(); card.querySelector('.lrn-t').innerHTML = esc(l.t); selfJudge(); };
+    var beats = beatsOf(l.t), bi = 0, hint = 0, scores = [], whisperAt = 0, finished = false, heardAll = '';
+    var drawCard = function (extra) {
+      card.className = 'lrn-card mine' + (opt.kuroko === 'on' ? ' kuroko' : '');
+      card.innerHTML = '<span class="lnchip" style="--c:' + roleColor(l.r) + '">' + esc(who(l)) + '（あなた）</span>' +
+        '<p class="lrn-t">' + beats.map(function (b, k) {
+          if (k < bi) return '<span class="bt done">' + esc(b) + '</span>';
+          if (k === bi) return '<span class="bt now">' + esc(b.slice(0, hint)) + '<span class="mask">' + esc(b.slice(hint).replace(/[^\s、。！？]/g, '○')) + '</span></span>';
+          return '<span class="bt later mask">' + esc(b.replace(/[^\s、。！？]/g, '○')) + '</span>';
+        }).join('') + '</p>' +
+        (beats.length > 1 ? '<p class="beatinfo">ビート ' + Math.min(bi + 1, beats.length) + ' / ' + beats.length + '（区切りごとに言えばOK）</p>' : '') +
+        (opt.kuroko === 'on' ? '<p class="beatinfo">詰まったら、画面のどこかを押すと黒子がささやきます</p>' : '') + (extra || '');
     };
     var stopRec = function () { try { if (learn.rec) learn.rec.abort(); } catch (e) { } learn.rec = null; };
-    var selfJudge = function () {
-      ctrl.innerHTML = '<p class="note">言えた？</p><button class="btn quiet" id="lrnNg">✕ まだ</button><button class="btn brand" id="lrnOk">〇 言えた</button>';
-      document.getElementById('lrnOk').onclick = function () { card.querySelector('.lrn-t').innerHTML = esc(l.t); card.classList.add('good'); result(true, true); };
-      document.getElementById('lrnNg').onclick = function () { card.querySelector('.lrn-t').innerHTML = esc(l.t); card.classList.add('bad'); result(false, false); };
+    var result = function (ok, auto) {
+      if (finished) return; finished = true; stopRec();
+      done++; if (ok) good++; var x = markStudy(id, l.id, ok); prog();
+      var g = stageOf(x);
+      card.insertAdjacentHTML('beforeend', '<p class="lvl">' + (g >= 0 ? '覚え具合：' + LEVELS[g] + (ok ? '（' + GAP_DAYS[Math.min(4, x.level)] + '日後にまた出ます）' : '') : '') + '</p>');
+      ctrl.innerHTML = '<button class="btn quiet" id="lrnAgain">もう一度</button><button class="btn brand" id="lrnNext">次へ ›</button>';
+      document.getElementById('lrnAgain').onclick = function () { idx--; next(); };
+      document.getElementById('lrnNext').onclick = function () { next(); };
+      if (ok && auto) learn.timer = setTimeout(next, 1800);
     };
-    if (opt.judge === 'voice' && SR) {
-      ctrl.innerHTML = '<div class="mic on" id="lrnMic">🎤 どうぞ</div>' + hintBtn + '<button class="btn quiet sm" id="lrnSelf">自分で〇×</button>';
-      bindHint();
-      document.getElementById('lrnSelf').onclick = function () { stopRec(); selfJudge(); };
+    /* 赤ペン：合っていた字は緑、抜けた字は赤、余計に言った言葉は取り消し線 */
+    var showPen = function (heard, sc2) {
+      var pen = redPen(heard, l.t), ok = sc2 >= thr;
+      card.className = 'lrn-card ' + (ok ? 'good' : 'bad');
+      card.innerHTML = '<span class="lnchip" style="--c:' + roleColor(l.r) + '">' + esc(who(l)) + '（あなた）</span><p class="lrn-t pen">' + pen.text + '</p>' +
+        '<div class="lrn-res"><b>' + (sc2 >= 0.95 ? 'ばっちり！' : ok ? 'いいね！' : sc2 >= 0.5 ? 'おしい！' : 'もう一度！') + '</b> ' + Math.round(sc2 * 100) + '%' +
+        '<small>聞こえた言葉：' + (pen.heard || '（なし）') + '</small><small class="legend"><span class="d-ok">言えた</span> <span class="d-ng">抜けた・ちがう</span> <span class="d-x">余計</span></small></div>';
+      return ok;
+    };
+    var selfJudge = function () {
+      stopRec();
+      card.querySelector('.lrn-t').innerHTML = esc(l.t);
+      ctrl.innerHTML = '<p class="note">言えた？</p><button class="btn quiet" id="lrnNg">✕ まだ</button><button class="btn brand" id="lrnOk">〇 言えた</button>';
+      document.getElementById('lrnOk').onclick = function () { card.classList.remove('mine'); card.classList.add('good'); result(true, true); };
+      document.getElementById('lrnNg').onclick = function () { card.classList.remove('mine'); card.classList.add('bad'); result(false, false); };
+    };
+    var controls = function (msg) {
+      ctrl.innerHTML = (msg ? '<div class="mic" id="lrnMic">' + msg + '</div>' : '') +
+        '<button class="btn quiet sm" id="lrnHint">ヒント</button><button class="btn quiet sm" id="lrnShow">答えを見る</button>' +
+        (opt.judge === 'voice' && SR ? '<button class="btn quiet sm" id="lrnSelf">自分で〇×</button>' : '');
+      document.getElementById('lrnHint').onclick = function (e) { e.stopPropagation(); giveHint(false); };
+      document.getElementById('lrnShow').onclick = function (e) { e.stopPropagation(); selfJudge(); };
+      var sb = document.getElementById('lrnSelf'); if (sb) sb.onclick = function (e) { e.stopPropagation(); selfJudge(); };
+    };
+    var giveHint = function (whisper) {
+      var b = beats[bi] || '';
+      hint = Math.min(b.length, hint + (whisper ? 3 : Math.max(2, Math.ceil(b.length / 5))));
+      drawCard();
+      if (whisper) {
+        /* 黒子：マイクを止めて、頭の数文字だけ小声で。言い終わったら、また聞く */
+        stopRec();
+        speak(b.slice(Math.max(0, whisperAt), hint) || b.slice(0, 3), function () { if (!finished) listen(); }, null, true);
+        whisperAt = hint;
+      }
+    };
+    card.onclick = function (e) { if (opt.kuroko === 'on' && !finished && !e.target.closest('button')) giveHint(true); };
+    /* 聞き取った言葉で、今のビートからどこまで言えたかを決める（2つ以上まとめて言ってもよい） */
+    var judgeBeats = function (heard) {
+      var best = { k: -1, sc: 0 };
+      for (var k = bi; k < beats.length; k++) {
+        var sc2 = sayScore(heard, { t: beats.slice(bi, k + 1).join('') });
+        if (sc2 >= thr && sc2 >= best.sc - 0.02) best = { k: k, sc: sc2 };
+      }
+      if (best.k < 0) return null;
+      heardAll += heard;
+      for (var j = bi; j <= best.k; j++) scores.push(best.sc);
+      bi = best.k + 1; hint = 0; whisperAt = 0;
+      return best;
+    };
+    var listen = function () {
+      if (!learn.on || finished) return;
+      if (!(opt.judge === 'voice' && SR)) { drawCard(); ctrl.innerHTML = '<p class="note">声に出して言ってみよう</p>'; controls(''); return; }
+      drawCard(); controls('🎤 どうぞ' + (beats.length > 1 && bi > 0 ? '（続きから）' : ''));
+      var mic = document.getElementById('lrnMic'); mic.classList.add('on');
       var rec = new SR(); learn.rec = rec;
       rec.lang = 'ja-JP'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 3;
       var heard = '', fired = false;
@@ -905,18 +1034,35 @@ function learnRun(id, me, seq, isMine, opt, title) {
         var t = ''; for (var i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
         heard = t; var m = document.getElementById('lrnMic'); if (m) m.textContent = '🎤 ' + t;
       };
-      rec.onerror = function (ev) { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { toast('マイクが使えないので、自分で〇×にします'); opt.judge = 'self'; store.set('learnOpt', opt); selfJudge(); } };
-      rec.onend = function () {
-        if (fired || learn.rec !== rec || !learn.on) return; fired = true; learn.rec = null;
-        if (heard) judge(heard);
-        else { var m = document.getElementById('lrnMic'); if (m) { m.textContent = '🎤 聞こえませんでした'; m.classList.remove('on'); } ctrl.insertAdjacentHTML('afterbegin', '<button class="btn brand sm" id="lrnRetry">もう一度話す</button>'); document.getElementById('lrnRetry').onclick = function () { idx--; next(); }; }
+      rec.onerror = function (ev) {
+        if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { fired = true; toast('マイクが使えないので、自分で〇×にします'); opt.judge = 'self'; store.set('learnOpt', opt); selfJudge(); }
       };
-      try { rec.start(); } catch (e) { selfJudge(); }
-    } else {
-      ctrl.innerHTML = '<p class="note">声に出して言ってみよう</p>' + hintBtn;
-      bindHint();
-      learn.timer = setTimeout(function () { }, 0);
-    }
+      rec.onend = function () {
+        if (fired || learn.rec !== rec || !learn.on || finished) return; fired = true; learn.rec = null;
+        if (!heard) { waitTap('🎤 聞こえませんでした', 'もう一度話す'); return; }
+        var r = judgeBeats(heard);
+        if (bi >= beats.length) {
+          /* 全部のビートを言えた：セリフ全体で赤ペン */
+          var avg = scores.reduce(function (a, b) { return a + b; }, 0) / scores.length;
+          var ok = beats.length > 1 ? (showPen(heardAll, sayScore(heardAll, l)), true) : showPen(heard, sayScore(heard, l));
+          result(ok, true); return;
+        }
+        if (r) { drawCard(); waitTap('いいね！ 続きをどうぞ', '続きを話す', true); return; }
+        /* 今のビートが言えなかった：そのビートを赤ペンで見せて、言い直し */
+        var pen = redPen(heard, beats[bi]);
+        drawCard('<div class="lrn-res"><b>おしい！</b> ' + Math.round(pen.score * 100) + '%<small>このビート：</small><p class="pen">' + pen.text + '</p><small>聞こえた言葉：' + pen.heard + '</small></div>');
+        waitTap('', 'もう一度話す');
+      };
+      try { rec.start(); } catch (e) { waitTap('', '話す'); }
+    };
+    /* iPhoneは、自動でマイクを続けて使えないことがあるので、ボタン（または画面）を押して再開する */
+    var waitTap = function (msg, label, tryAuto) {
+      controls(msg);
+      ctrl.insertAdjacentHTML('afterbegin', '<button class="btn brand" id="lrnGoOn">' + label + '</button>');
+      document.getElementById('lrnGoOn').onclick = function (e) { e.stopPropagation(); listen(); };
+      if (tryAuto && opt.kuroko === 'on') learn.timer = setTimeout(listen, 700);
+    };
+    listen();
   };
   var finish = function () {
     stopLearn();
@@ -928,12 +1074,11 @@ function learnRun(id, me, seq, isMine, opt, title) {
     document.getElementById('lrnMenu').onclick = function () { viewLearn(id); };
     document.getElementById('lrnRe').onclick = function () { learnRun(id, me, seq, isMine, opt, title); };
   };
-  /* 最初の一歩は画面を押して始める（iPhoneでは、押したあとでないと声やマイクが使えない） */
   card.className = 'lrn-card start';
-  card.innerHTML = '<p class="lrn-t">準備ができたら、スタート</p><p class="note">' + (opt.judge === 'voice' && SR ? '自分の番になったら、マイクに向かってセリフを言ってください。' : '自分の番になったら、声に出して言ってみてください。') + '</p>';
+  card.innerHTML = '<p class="lrn-t">準備ができたら、スタート</p><p class="note">' + (opt.judge === 'voice' && SR ? '自分の番になったら、マイクに向かってセリフを言ってください。長いセリフは、区切りごとに言えば大丈夫。' : '自分の番になったら、声に出して言ってみてください。') + '</p>';
   ctrl.innerHTML = '<button class="btn brand wide" id="lrnGo">スタート</button>';
   document.getElementById('lrnGo').onclick = function () {
-    try { if (opt.other === 'tts' && window.speechSynthesis) { var u0 = new SpeechSynthesisUtterance(''); speechSynthesis.speak(u0); } } catch (e) { }
+    try { if (window.speechSynthesis) { var u0 = new SpeechSynthesisUtterance(''); speechSynthesis.speak(u0); } } catch (e) { }
     prog(); next();
   };
 }

@@ -684,3 +684,22 @@ body.noscroll{overflow:hidden}
 .fl b{font-size:12px}
 @media (prefers-reduced-motion: reduce){.mic.on{animation:none}}
 .lrn-prev:not(:empty){background:rgba(35,31,43,.78);border-radius:10px;padding:6px 10px;text-shadow:none}
+/* v0.8 覚える：赤ペン・熟練度・ビート・黒子 */
+.d-ok{color:#1E7A2E;background:rgba(92,214,92,.22);border-radius:3px}
+.d-ng{color:#C0261A;text-decoration:underline wavy #E0402F 2px;text-underline-offset:4px;font-weight:700}
+.d-x{text-decoration:line-through;color:#9A8F80}
+.lrn-res .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:12px}
+.lrn-res .pen{margin:4px 0;font-size:17px;line-height:1.8}
+.stagebar{display:flex;height:30px;margin-top:14px;border:var(--ol);border-radius:999px;overflow:hidden;box-shadow:3px 3px 0 var(--ink);background:#fff}
+.stagebar .sg{display:flex;align-items:center;justify-content:center;font:700 11.5px/1 var(--f-body);white-space:nowrap;overflow:hidden;min-width:0}
+.sg0{background:#E9DCC2}.sg1{background:#BDEBA8}.sg2{background:#FFC7DA}.sg3{background:#FF8FB1}.sgn{background:#fff;color:var(--ink-2)}
+.scene-pick.knock{background:var(--salmon);color:#fff}
+.scene-pick.knock small{color:#fff}
+.bt.done{color:#1E7A2E}
+.bt.now{background:rgba(255,255,255,.55);border-radius:6px;box-shadow:0 0 0 3px rgba(35,31,43,.15)}
+.bt.later{opacity:.55}
+.beatinfo{margin:0;font-size:12.5px;color:var(--ink-2)}
+.lrn-card.kuroko{cursor:pointer}
+.lrn-card.cue{opacity:.92}
+.cuetag{align-self:flex-start;background:var(--ink);color:#fff;border-radius:6px;padding:1px 8px;font-size:11px}
+.lvl{margin:0;font-size:13px;font-weight:700}
