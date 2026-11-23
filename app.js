@@ -529,7 +529,7 @@ function renderHome(r) {
   var hasScript = !!r.script, hasAudio = !!(r.audios && r.audios.length);
   var modes = [
     ['script', '台本を見る', hasScript ? r.script.label + '（確定版）を開きます' : '確定版の台本が届くと開けます', TOYS.list.script[2], hasScript ? '' : '台本待ち'],
-    ['learn', '覚える', '自分の番で止まります。言えたか自動で確かめます', ART.mirror, '準備中'],
+    ['learn', '覚える', r.linesAt ? '自分の番で止まります。言えたか声で確かめます' : 'セリフの割り振りが届くと使えます', ART.mirror, r.linesAt ? '' : '準備中'],
     ['listen', '聞き流す', hasAudio ? '読み合わせの録音（' + r.audios.length + '件）を流します' : '読み合わせの録音が届くと使えます', ART.lamp, hasAudio ? '' : '録音待ち'],
     ['drive', '運転中', '画面を見ずに、声だけで練習します', ART.go, '準備中']
   ];
@@ -545,7 +545,7 @@ function renderHome(r) {
     '<div class="modes">' + modes.map(function (m) {
       return '<button class="mode mm-' + m[0] + '"' + (m[4] ? ' aria-disabled="true"' : '') + ' data-mode="' + m[0] + '"><span class="m-ico">' + (m[3].indexOf('class=') < 0 ? m[3].replace('<svg', '<svg class="ico"') : m[3]) + '</span><span><b>' + m[1] + '</b><small>' + esc(m[2]) + '</small></span>' + (m[4] ? '<span class="soon">' + m[4] + '</span>' : '') + '</button>';
     }).join('') + '<div class="prog modeprog" hidden><i></i></div></div>' +
-    '<h2 class="sec-t">楽屋花</h2><div class="flowers">' + [0, 1, 2, 3].map(ART.vase).join('') +
+    '<h2 class="sec-t">楽屋花</h2><div class="flowers">' + flowerRow(w.id) +
     '<p>場ごとに覚え具合の花が咲きます。全部の場が満開になったら、千秋楽の準備はばっちり。</p></div>' +
     TOYS.row(['script', 'nosegl', 'castanet', 'tape', 'bottle']) +
     '<p class="foot"><button class="btn quiet sm" id="dropPass">この入館パスを外す</button>' +
@@ -570,7 +570,8 @@ function renderHome(r) {
   app.querySelector('.modes').onclick = function (e) {
     var b = e.target.closest('.mode'); if (!b) return;
     var m = b.dataset.mode;
-    if (m === 'learn' || m === 'drive') { toast(r.linesAt ? 'セリフの割り振りは届いています。練習の画面はもうすぐ使えます' : 'セリフの割り振りができると使えます。いま舞台監督が準備しています'); return; }
+    if (m === 'learn') { if (r.linesAt) go('/w/' + w.id + '/learn'); else toast('セリフの割り振りができると使えます。いま舞台監督が準備しています'); return; }
+    if (m === 'drive') { toast('運転中モードはもうすぐ使えます'); return; }
     if (m === 'listen') { if (hasAudio) go('/w/' + w.id + '/listen'); else toast('読み合わせの録音が届くと使えます'); return; }
     if (m === 'script') {
       if (!hasScript) { toast('確定版の台本が届くと開けます'); return; }
@@ -684,6 +685,258 @@ function drawPlayer(work) {
   tick();
 }
 function tick() { if (player.tick) player.tick(); }
+
+/* ===================== 覚える ===================== */
+var learn = { on: false, rec: null, wake: null, timer: null };
+function stopLearn() {
+  learn.on = false; clearTimeout(learn.timer);
+  try { if (learn.rec) learn.rec.abort(); } catch (e) { } learn.rec = null;
+  try { speechSynthesis.cancel(); } catch (e) { }
+  try { if (learn.wake) learn.wake.release(); } catch (e) { } learn.wake = null;
+  if (learn.audio) { learn.audio.pause(); }
+}
+/* 練習の記録（行のIDごと）。苦手だけの練習と楽屋花に使う */
+function studyOf(workId) { return store.get('study.' + workId, {}); }
+function markStudy(workId, id, good) {
+  var st = studyOf(workId), x = st[id] || { ok: 0, ng: 0 };
+  if (good) x.ok++; else x.ng++;
+  x.last = good ? 1 : 0; x.at = Date.now(); st[id] = x; store.set('study.' + workId, st);
+}
+function flowerRow(workId) {
+  var cache = store.get('learnScenes.' + workId, null);
+  if (!cache || !cache.length) return [0, 1, 2, 3].map(ART.vase).join('');
+  var st = studyOf(workId);
+  return cache.slice(0, 8).map(function (sc, i) {
+    var ok = sc.ids.filter(function (id) { return st[id] && st[id].last; }).length, rate = sc.ids.length ? ok / sc.ids.length : 0;
+    return '<span class="fl" title="' + esc(sc.name) + '">' + ART.vase(i).replace('opacity=".35"', 'opacity="' + (0.2 + rate * 0.8).toFixed(2) + '"').replace('r="6"', 'r="' + (4 + rate * 7).toFixed(1) + '"') +
+      '<small>' + esc(sc.name.slice(0, 6)) + '</small><b>' + Math.round(rate * 100) + '%</b></span>';
+  }).join('');
+}
+/* 言えたかの判定：ひらがなにそろえて、記号を外してから、同じ文字の並びがどれだけあるかで比べる */
+function normSay(t) {
+  return String(t || '').normalize('NFKC').replace(/[ァ-ヶ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0x60); })
+    .replace(/[\s、。，．,.・！？!?「」『』（）()［］\[\]…‥ー―〜~\-—：:；;"'“”‘’]/g, '');
+}
+function sayScore(heard, line) {
+  var a = normSay(heard), best = 0;
+  [normSay(line.t), normSay(line.y)].forEach(function (b) {
+    if (!b || !a) return;
+    var m = a.length, n = b.length, prev = new Array(n + 1).fill(0), cur;
+    for (var i = 1; i <= m; i++) {
+      cur = new Array(n + 1).fill(0);
+      for (var j = 1; j <= n; j++) cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+      prev = cur;
+    }
+    var lcs = prev[n], f = 2 * lcs / (m + n);
+    best = Math.max(best, f);
+  });
+  return best;
+}
+function viewLearn(id) {
+  var me = store.get('me.' + id, null);
+  if (!store.get('passes', {})[id] || !me) { go('/w/' + id); return; }
+  document.body.className = 'room-theme'; document.body.style.setProperty('--tile', PROPS_TILE);
+  app.innerHTML = '<header class="listenhead"><a class="back pill" href="#/w/' + esc(id) + '">← 楽屋へ</a><h1>' + ART.mirror.replace('class="ico"', 'class="ico h-ico"') + '覚える</h1><p>' + esc(me.work.title) + '</p></header><main class="wrap tatami-in" id="lrn">' + loading() + '</main>';
+  var refresh = api('me', { workId: id }).then(function (r) { store.set('me.' + id, r); return r; }).catch(function () { return me; });
+  refresh.then(function (r) {
+    if (!r.script) throw { message: '確定版の台本がまだありません' };
+    var key = 'lines.' + r.script.id, cached = store.get(key, null);
+    if (cached && cached.updatedAt === r.linesAt) return [r, cached.lines];
+    return api('lines', { scriptId: r.script.id, asMember: true, workId: id }).then(function (d) {
+      if (!d) throw { message: 'セリフの割り振りがまだ届いていません' };
+      try { store.set(key, { updatedAt: d.updatedAt, lines: d.lines }); } catch (e) { }
+      return [r, d.lines];
+    }, function (e) { if (cached) return [r, cached.lines]; throw e; });
+  }).then(function (x) { learnMenu(id, x[0], migrateLines(x[1])); })
+    .catch(function (e) { var m = document.getElementById('lrn'); if (m) m.innerHTML = '<div class="card">' + esc(e.message || '開けませんでした') + '</div>'; });
+}
+function learnMenu(id, me, lines) {
+  var main = document.getElementById('lrn'); if (!main) return;
+  var mine = me.actor.roles || [];
+  var isMine = function (l) { return l.k === 'line' && (l.rs || [l.r]).some(function (r) { return mine.indexOf(r) >= 0; }); };
+  /* 幕・場ごとに分ける（見出しがなければ全体で1つ） */
+  var scenes = [], cur = { name: '最初から', start: 0, ids: [] };
+  lines.forEach(function (l, i) {
+    if (l.k === 'scene') { if (i > 0 || cur.ids.length) scenes.push(cur); cur = { name: l.t, start: i, ids: [] }; }
+    else if (isMine(l)) cur.ids.push(l.id);
+  });
+  scenes.push(cur);
+  scenes = scenes.filter(function (sc, i) { return i > 0 || sc.ids.length || scenes.length === 1; });
+  store.set('learnScenes.' + id, scenes.map(function (s2) { return { name: s2.name, ids: s2.ids }; }));
+  var st = studyOf(id), total = lines.filter(isMine).length;
+  var weak = lines.filter(function (l) { return isMine(l) && st[l.id] && !st[l.id].last; }).length;
+  var opt = store.get('learnOpt', { other: window.speechSynthesis ? 'tts' : 'auto', judge: (window.SpeechRecognition || window.webkitSpeechRecognition) ? 'voice' : 'self', dir: 'skip', rate: 1.1 });
+  if (!total) {
+    main.innerHTML = '<div class="card"><p>あなたの役（' + esc(mine.join('、') || '未定') + '）のセリフが、割り振りの中に見つかりませんでした。</p><p class="note">配役か割り振りが変わったかもしれません。舞台監督に確かめてください。</p></div>';
+    return;
+  }
+  main.innerHTML = '<div class="say hello">' + ART.sheep('happy') + '<div class="bubble">' + esc(me.actor.name) + 'さんのセリフは ' + total + ' 個。どこから練習する？</div></div>' +
+    '<div class="scenes">' + scenes.map(function (sc, i) {
+      var ok = sc.ids.filter(function (x) { return st[x] && st[x].last; }).length;
+      return '<button class="mode scene-pick" data-s="' + i + '"><span><b>' + esc(sc.name) + '</b><small>あなたのセリフ ' + sc.ids.length + ' 個・言えた ' + ok + ' 個</small></span><span class="pct">' + (sc.ids.length ? Math.round(ok / sc.ids.length * 100) : 0) + '%</span></button>';
+    }).join('') +
+    (scenes.length > 1 ? '<button class="mode scene-pick all" data-s="all"><span><b>通しで練習</b><small>はじめから最後まで</small></span></button>' : '') +
+    (weak ? '<button class="mode scene-pick weak" data-s="weak"><span><b>苦手だけ</b><small>前に言えなかったセリフ ' + weak + ' 個</small></span></button>' : '') + '</div>' +
+    '<details class="card lopts"><summary>練習のしかた</summary>' +
+    '<div class="f"><span class="flabel">相手のセリフ</span><div class="rolepick" data-o="other">' +
+      [['tts', '読み上げる'], ['auto', '文字だけ（自動で進む）'], ['tap', '文字だけ（自分で進める）']].map(function (o) { return '<button type="button" class="rchip' + (opt.other === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+    '<div class="f"><span class="flabel">言えたかの確かめ方</span><div class="rolepick" data-o="judge">' +
+      [['voice', '声で判定'], ['self', '自分で〇×']].map(function (o) { return '<button type="button" class="rchip' + (opt.judge === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+    '<div class="f"><span class="flabel">ト書き</span><div class="rolepick" data-o="dir">' +
+      [['skip', '飛ばす'], ['show', '文字で出す'], ['read', '読み上げる']].map(function (o) { return '<button type="button" class="rchip' + (opt.dir === o[0] ? ' on' : '') + '" data-v="' + o[0] + '">' + o[1] + '</button>'; }).join('') + '</div></div>' +
+    '<p class="note">相手のセリフは、録音と対応づけられていれば録音で流れます（舞台監督の準備しだい）。</p></details>';
+  main.querySelector('.lopts').onclick = function (e) {
+    var b = e.target.closest('[data-v]'); if (!b) return;
+    var g = b.parentNode; opt[g.dataset.o] = b.dataset.v; store.set('learnOpt', opt);
+    g.querySelectorAll('.rchip').forEach(function (c) { c.classList.toggle('on', c === b); });
+  };
+  main.querySelector('.scenes').onclick = function (e) {
+    var b = e.target.closest('.scene-pick'); if (!b) return;
+    var v = b.dataset.s, seq;
+    if (v === 'all') seq = lines.slice();
+    else if (v === 'weak') seq = lines.filter(function (l) { return isMine(l) && st[l.id] && !st[l.id].last; });
+    else { var sc = scenes[+v], end = scenes[+v + 1] ? scenes[+v + 1].start : lines.length; seq = lines.slice(sc.start, end); }
+    learnRun(id, me, seq, isMine, opt, v === 'weak' ? '苦手だけ' : v === 'all' ? '通し' : scenes[+v].name);
+  };
+}
+function learnRun(id, me, seq, isMine, opt, title) {
+  var main = document.getElementById('lrn'); if (!main) return;
+  stopLearn(); learn.on = true;
+  try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function (w) { learn.wake = w; }).catch(function () { }); } catch (e) { }
+  var mineCount = seq.filter(isMine).length, done = 0, good = 0, idx = -1;
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var voice = null;
+  var pickVoice = function () { try { voice = speechSynthesis.getVoices().filter(function (v) { return /^ja/i.test(v.lang); })[0] || null; } catch (e) { } };
+  pickVoice(); try { speechSynthesis.onvoiceschanged = pickVoice; } catch (e) { }
+  main.innerHTML = '<div class="lrn-top"><b>' + esc(title) + '</b><span id="lrnProg"></span><button class="btn quiet sm" id="lrnQuit">やめる</button></div>' +
+    '<div class="lrn-prev" id="lrnPrev"></div><div class="lrn-card" id="lrnCard"></div><div class="lrn-ctrl" id="lrnCtrl"></div>';
+  var card = document.getElementById('lrnCard'), ctrl = document.getElementById('lrnCtrl'), prevBox = document.getElementById('lrnPrev');
+  var prog = function () { document.getElementById('lrnProg').textContent = 'あなたのセリフ ' + done + ' / ' + mineCount + (done ? '・言えた ' + good : ''); };
+  document.getElementById('lrnQuit').onclick = function () { stopLearn(); viewLearn(id); };
+  var speak = function (text, then) {
+    try {
+      speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text); u.lang = 'ja-JP'; if (voice) u.voice = voice; u.rate = opt.rate || 1.1;
+      var fin = false, end = function () { if (fin) return; fin = true; if (learn.on) then(); };
+      u.onend = end; u.onerror = end;
+      speechSynthesis.speak(u);
+      learn.timer = setTimeout(end, 2500 + text.length * 260); /* 読み上げが止まってしまったときの保険 */
+    } catch (e) { then(); }
+  };
+  var playClip = function (l, then) {
+    /* 録音と対応づいていれば、その区間を流す */
+    var a = l.audio, au = (me.audios || []).filter(function (x) { return a && x.id === a.audioId; })[0];
+    if (!a || !au) return false;
+    scriptBlob(Object.assign({ workId: id }, au), null, 'audio', true).then(function (blob) {
+      if (!learn.on) return;
+      if (!learn.audio) learn.audio = new Audio();
+      if (learn.audioId !== au.id) { if (learn.url) URL.revokeObjectURL(learn.url); learn.url = URL.createObjectURL(blob); learn.audio.src = learn.url; learn.audioId = au.id; }
+      var A = learn.audio; A.currentTime = a.start; A.play().catch(function () { then(); });
+      var stopAt = function () { if (A.currentTime >= a.end) { A.pause(); A.removeEventListener('timeupdate', stopAt); if (learn.on) then(); } };
+      A.addEventListener('timeupdate', stopAt);
+    }).catch(function () { then(); });
+    return true;
+  };
+  var show = function (l, hidden) {
+    var who = l.k === 'line' ? (l.rs && l.rs.length > 1 ? l.rs.join('・') : l.r) : l.k === 'dir' ? 'ト書き' : '';
+    card.className = 'lrn-card k-' + l.k + (hidden ? ' mine' : '');
+    card.innerHTML = (who ? '<span class="lnchip" style="--c:' + (l.k === 'line' ? roleColor(l.r) : '#E7E1D4') + '">' + esc(who) + '</span>' : '') +
+      '<p class="lrn-t">' + (hidden ? '<span class="mask">' + esc(l.t.replace(/[^\s、。！？]/g, '○')) + '</span>' : esc(l.t)) + '</p>';
+  };
+  var next = function () {
+    if (!learn.on) return;
+    clearTimeout(learn.timer);
+    idx++;
+    if (idx >= seq.length) return finish();
+    var l = seq[idx];
+    if (l.k === 'skip') return next();
+    if (l.k === 'scene') { prevBox.innerHTML = ''; card.className = 'lrn-card k-scene'; card.innerHTML = '<p class="lrn-t">' + esc(l.t) + '</p>'; ctrl.innerHTML = ''; learn.timer = setTimeout(next, 1400); return; }
+    if (l.k === 'dir' && opt.dir === 'skip') return next();
+    if (isMine(l)) return myTurn(l);
+    show(l, false); prog();
+    ctrl.innerHTML = '<button class="btn quiet" id="lrnSkip">次へ ›</button>';
+    document.getElementById('lrnSkip').onclick = function () { try { speechSynthesis.cancel(); } catch (e) { } if (learn.audio) learn.audio.pause(); next(); };
+    if (l.k === 'line' && playClip(l, next)) return;
+    var mode = l.k === 'dir' ? (opt.dir === 'read' ? 'tts' : 'auto') : opt.other;
+    if (mode === 'tts' && window.speechSynthesis) speak(l.t, next);
+    else if (mode === 'auto') learn.timer = setTimeout(next, 900 + l.t.length * 160);
+  };
+  var myTurn = function (l) {
+    var prevLine = seq[idx - 1];
+    prevBox.innerHTML = prevLine && prevLine.k !== 'scene' ? '<small>きっかけ</small>' + esc(prevLine.t.slice(-40)) : '';
+    show(l, true); prog();
+    var hint = 0;
+    var judge = function (heard) {
+      var sc2 = sayScore(heard, l), ok = sc2 >= 0.8;
+      card.classList.add(ok ? 'good' : 'bad'); card.querySelector('.lrn-t').innerHTML = esc(l.t);
+      card.insertAdjacentHTML('beforeend', '<div class="lrn-res"><b>' + (sc2 >= 0.92 ? 'ばっちり！' : ok ? 'いいね！' : sc2 >= 0.5 ? 'おしい！' : 'もう一度！') + '</b> ' + Math.round(sc2 * 100) + '%' +
+        (heard ? '<small>聞こえた言葉：' + esc(heard) + '</small>' : '') + '</div>');
+      result(ok, true);
+    };
+    var result = function (ok, auto) {
+      done++; if (ok) good++; markStudy(id, l.id, ok); prog();
+      ctrl.innerHTML = '<button class="btn quiet" id="lrnAgain">もう一度</button><button class="btn brand" id="lrnNext">次へ ›</button>';
+      document.getElementById('lrnAgain').onclick = function () { done--; if (ok) good--; idx--; next(); };
+      document.getElementById('lrnNext').onclick = function () { next(); };
+      if (ok && auto) learn.timer = setTimeout(next, 1600);
+    };
+    var hintBtn = '<button class="btn quiet sm" id="lrnHint">ヒント</button><button class="btn quiet sm" id="lrnShow">答えを見る</button>';
+    var bindHint = function () {
+      document.getElementById('lrnHint').onclick = function () {
+        hint = Math.min(l.t.length, hint + Math.max(2, Math.ceil(l.t.length / 6)));
+        card.querySelector('.lrn-t').innerHTML = esc(l.t.slice(0, hint)) + '<span class="mask">' + esc(l.t.slice(hint).replace(/[^\s、。！？]/g, '○')) + '</span>';
+      };
+      document.getElementById('lrnShow').onclick = function () { stopRec(); card.querySelector('.lrn-t').innerHTML = esc(l.t); selfJudge(); };
+    };
+    var stopRec = function () { try { if (learn.rec) learn.rec.abort(); } catch (e) { } learn.rec = null; };
+    var selfJudge = function () {
+      ctrl.innerHTML = '<p class="note">言えた？</p><button class="btn quiet" id="lrnNg">✕ まだ</button><button class="btn brand" id="lrnOk">〇 言えた</button>';
+      document.getElementById('lrnOk').onclick = function () { card.querySelector('.lrn-t').innerHTML = esc(l.t); card.classList.add('good'); result(true, true); };
+      document.getElementById('lrnNg').onclick = function () { card.querySelector('.lrn-t').innerHTML = esc(l.t); card.classList.add('bad'); result(false, false); };
+    };
+    if (opt.judge === 'voice' && SR) {
+      ctrl.innerHTML = '<div class="mic on" id="lrnMic">🎤 どうぞ</div>' + hintBtn + '<button class="btn quiet sm" id="lrnSelf">自分で〇×</button>';
+      bindHint();
+      document.getElementById('lrnSelf').onclick = function () { stopRec(); selfJudge(); };
+      var rec = new SR(); learn.rec = rec;
+      rec.lang = 'ja-JP'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 3;
+      var heard = '', fired = false;
+      rec.onresult = function (ev) {
+        var t = ''; for (var i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+        heard = t; var m = document.getElementById('lrnMic'); if (m) m.textContent = '🎤 ' + t;
+      };
+      rec.onerror = function (ev) { if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') { toast('マイクが使えないので、自分で〇×にします'); opt.judge = 'self'; store.set('learnOpt', opt); selfJudge(); } };
+      rec.onend = function () {
+        if (fired || learn.rec !== rec || !learn.on) return; fired = true; learn.rec = null;
+        if (heard) judge(heard);
+        else { var m = document.getElementById('lrnMic'); if (m) { m.textContent = '🎤 聞こえませんでした'; m.classList.remove('on'); } ctrl.insertAdjacentHTML('afterbegin', '<button class="btn brand sm" id="lrnRetry">もう一度話す</button>'); document.getElementById('lrnRetry').onclick = function () { idx--; next(); }; }
+      };
+      try { rec.start(); } catch (e) { selfJudge(); }
+    } else {
+      ctrl.innerHTML = '<p class="note">声に出して言ってみよう</p>' + hintBtn;
+      bindHint();
+      learn.timer = setTimeout(function () { }, 0);
+    }
+  };
+  var finish = function () {
+    stopLearn();
+    prevBox.innerHTML = '';
+    card.className = 'lrn-card done';
+    card.innerHTML = ART.sheep('happy') + '<p class="lrn-t">おつかれさま！</p><p>あなたのセリフ ' + mineCount + ' 個のうち、言えたのは <b>' + good + '</b> 個。</p>';
+    ctrl.innerHTML = '<button class="btn quiet" id="lrnMenu">練習のメニューへ</button><button class="btn brand" id="lrnRe">もう一度</button>';
+    if (good === mineCount && mineCount) confetti();
+    document.getElementById('lrnMenu').onclick = function () { viewLearn(id); };
+    document.getElementById('lrnRe').onclick = function () { learnRun(id, me, seq, isMine, opt, title); };
+  };
+  /* 最初の一歩は画面を押して始める（iPhoneでは、押したあとでないと声やマイクが使えない） */
+  card.className = 'lrn-card start';
+  card.innerHTML = '<p class="lrn-t">準備ができたら、スタート</p><p class="note">' + (opt.judge === 'voice' && SR ? '自分の番になったら、マイクに向かってセリフを言ってください。' : '自分の番になったら、声に出して言ってみてください。') + '</p>';
+  ctrl.innerHTML = '<button class="btn brand wide" id="lrnGo">スタート</button>';
+  document.getElementById('lrnGo').onclick = function () {
+    try { if (opt.other === 'tts' && window.speechSynthesis) { var u0 = new SpeechSynthesisUtterance(''); speechSynthesis.speak(u0); } } catch (e) { }
+    prog(); next();
+  };
+}
 
 /* 小道具の仕掛け：触るとプルッと動いて、ひと言しゃべる */
 var toyAudio = null, toysTouched = {};
@@ -2107,7 +2360,7 @@ var DEMO = {
     var adminOnly = ADMIN_ACTIONS;
     db.scripts = db.scripts || []; db.roles = db.roles || []; db.audios = db.audios || [];
     var memberOf = function () { var t = String(token).split('.'), m = db.actors.filter(function (x) { return x.id === t[1]; })[0]; return m && m.code === t[2] && m.active ? m : null; };
-    if (adminOnly.indexOf(action) >= 0 && !isAdmin && !(action === 'downloadChunk' && memberOf())) return ng('auth', 'もう一度、管理者コードを入れてください');
+    if (adminOnly.indexOf(action) >= 0 && !isAdmin && !((action === 'downloadChunk' || action === 'lines') && memberOf())) return ng('auth', 'もう一度、管理者コードを入れてください');
     var rolesOf = function (wid) { return db.roles.filter(function (x) { return x.workId === wid; }); };
     var castRename = function (wid, from, to) { db.actors.forEach(function (a) { if (a.workId !== wid) return; var l = a.roles ? a.roles.split(',') : [], i = l.indexOf(from); if (i < 0) return; if (to) l[i] = to; else l.splice(i, 1); a.roles = l.join(','); }); };
     switch (action) {
@@ -2125,7 +2378,8 @@ var DEMO = {
         if (!me || me.code !== parts[2] || !me.active || me.workId !== p.workId) return ng('auth', '入館パスが変わりました。新しいコードを入れてください');
         var mf = db.scripts.filter(function (x) { return x.workId === me.workId && x.status === 'final'; })[0];
         return ok({ actor: { id: me.id, name: me.name, roles: pa(me).roles }, work: pw(db.works.filter(function (w) { return w.id === me.workId; })[0]),
-          script: mf || null, audios: db.audios.filter(function (x) { return x.workId === me.workId; }) });
+          script: mf || null, audios: db.audios.filter(function (x) { return x.workId === me.workId; }),
+          linesAt: mf && db.lines && db.lines[mf.id] ? 'demo' : '' });
       case 'adminLogin': return norm(p.code) === (db.adminCode || 'DEMO2027') ? ok({ token: 'demo-admin', mustSet: false }) : ng('badcode', '管理者コードが違います');
       case 'setAdminCode': if (norm(p.code).length < 6) return ng('invalid', '6文字以上の英数字にしてください'); db.adminCode = norm(p.code); self.save(); return ok({ token: 'demo-admin', code: db.adminCode });
       case 'deleteActor': db.actors = db.actors.filter(function (x) { return x.id !== p.actorId; }); self.save(); return ok({ deleted: p.actorId });
@@ -2262,7 +2516,9 @@ function route() {
   }
   document.body.className = 'night';
   if (!(parts[0] === 'w' && parts[2] === 'listen')) stopPlayer();
+  stopLearn();
   if (parts[0] === 'w' && parts[1] && parts[2] === 'listen') return viewListen(parts[1]);
+  if (parts[0] === 'w' && parts[1] && parts[2] === 'learn') return viewLearn(parts[1]);
   if (parts[0] === 'w' && parts[1]) return viewHome(parts[1]);
   return viewDoor();
 }
