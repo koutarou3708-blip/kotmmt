@@ -196,7 +196,7 @@ var aud=new Audio(),bg={hiddenAt:0,ctAtHide:0,results:[]};
 aud.loop=true;
 $('b-bg').onclick=function(){
  if(!aud.src)aud.src=URL.createObjectURL(makeWav(30));
- if('mediaSession' in navigator){try{navigator.mediaSession.metadata=new MediaMetadata({title:'動作チェック（ポン）',artist:'もしょこむ楽屋'});
+ if('mediaSession' in navigator){try{navigator.mediaSession.metadata=new MediaMetadata({title:'動作チェック（ポン）',artist:'台本読み合わせ練習アプリ'});
   navigator.mediaSession.setActionHandler('pause',function(){aud.pause()});navigator.mediaSession.setActionHandler('play',function(){aud.play()})}catch(e){}}
  aud.play().then(function(){setP('bg','warn','確認中');out('bg','再生中です。画面をロックして、20秒以上たってから戻ってきてください')})
   .catch(function(e){detail('bg',e.name);setP('bg','ng','NG');out('bg','再生できませんでした：'+e.name)});

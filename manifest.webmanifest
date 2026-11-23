@@ -1,7 +1,7 @@
 {
-  "name": "もしょこむ楽屋",
-  "short_name": "楽屋",
-  "description": "劇団もしょこむの読み合わせ・セリフ練習アプリ",
+  "name": "台本読み合わせ練習アプリ",
+  "short_name": "読み合わせ",
+  "description": "劇団もしょこむの台本読み合わせ練習アプリ",
   "lang": "ja",
   "start_url": "./",
   "scope": "./",

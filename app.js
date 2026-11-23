@@ -85,7 +85,7 @@ var ART = {
 /* ===================== API ===================== */
 var ADMIN_ACTIONS = ['desk', 'saveWork', 'uploadPoster', 'cast', 'saveActor', 'reissueCode', 'setActorActive', 'deleteActor',
   'shelf', 'saveScriptNote', 'setScriptStatus', 'startUpload', 'uploadChunk', 'downloadChunk',
-  'roles', 'saveRole', 'deleteRole', 'aiRoles', 'audios', 'saveAudioNote', 'deleteAudio', 'setAdminCode', 'aiLines', 'aiCheck', 'saveLines', 'lines', 'aiYomi', 'saveAudioMap'];
+  'roles', 'saveRole', 'deleteRole', 'aiRoles', 'audios', 'saveAudioNote', 'deleteAudio', 'setAdminCode', 'admins', 'saveAdmin', 'reissueAdmin', 'setAdminActive', 'aiLines', 'aiCheck', 'saveLines', 'lines', 'aiYomi', 'saveAudioMap'];
 try { localStorage.removeItem('gakuya.adminCode'); } catch (e) { } /* v0.6：管理者コードは端末に残さない */
 var WRITES = ['saveWork', 'uploadPoster', 'saveActor', 'reissueCode', 'setActorActive', 'deleteActor', 'saveScriptNote', 'setScriptStatus', 'uploadChunk',
   'saveRole', 'deleteRole', 'aiRoles', 'saveAudioNote', 'deleteAudio', 'saveLines'];
@@ -158,12 +158,12 @@ function viewDoor() {
   var passes = store.get('passes', {});
   app.innerHTML = demoBar() +
     '<header class="sky"><div class="sky-in"><a class="logo" href="#/"><img src="' + LOGO + '" alt="劇団もしょこむ" width="160" height="86">' +
-    '<span class="logo-t">楽屋<small>読み合わせ・セリフ練習</small></span></a></div>' +
+    '<span class="logo-t">台本読み合わせ<small>練習アプリ</small></span></a></div>' +
     '<p class="lead">' + ART.sheep('happy').replace('<svg', '<svg class="sky-sheep"') + 'ようこそ、楽屋へ。稽古する作品を選んでね。</p></header>' +
     '<main class="wrap">' + installCard() +
     '<div class="theater"><span class="th-stage" aria-hidden="true"></span><span class="th-curtain l" aria-hidden="true"></span><span class="th-curtain r" aria-hidden="true"></span>' +
     '<span class="th-valance" aria-hidden="true"></span><div class="doors" id="board"><div class="skel"></div><div class="skel"></div></div><span class="th-floor" aria-hidden="true"></span></div>' +
-    '<p class="foot"><a class="link" href="#/admin">舞台監督（管理者）の方はこちら</a></p></main>';
+    '<p class="foot"><a class="link" href="#/guide">使い方</a>　・　<a class="link" href="#/admin">舞台監督（管理者）の方はこちら</a></p></main>';
   bindInstall();
   if (store.get('admin', '')) prefetch([['desk'], ['shelf', {}]]);
   cachedAll([['listWorks', { passes: passList() }]], function (r) {
@@ -531,7 +531,7 @@ function renderHome(r) {
     ['script', '台本を見る', hasScript ? r.script.label + '（確定版）を開きます' : '確定版の台本が届くと開けます', TOYS.list.script[2], hasScript ? '' : '台本待ち'],
     ['learn', '覚える', r.linesAt ? '自分の番で止まります。言えたか声で確かめます' : 'セリフの割り振りが届くと使えます', ART.mirror, r.linesAt ? '' : '準備中'],
     ['listen', '聞き流す', hasAudio ? '読み合わせの録音（' + r.audios.length + '件）を流します' : '読み合わせの録音が届くと使えます', ART.lamp, hasAudio ? '' : '録音待ち'],
-    ['drive', '運転中', '画面を見ずに、声だけで練習します', ART.go, '準備中']
+    ['drive', '運転中', r.linesAt ? '画面を見ずに、耳と声だけで練習します' : 'セリフの割り振りが届くと使えます', ART.go, r.linesAt ? '' : '準備中']
   ];
   document.body.className = 'room-theme';
   document.body.style.setProperty('--tile', PROPS_TILE);
@@ -541,6 +541,7 @@ function renderHome(r) {
     '</header><main class="wrap tatami-in">' +
     '<div class="tapes"><span>あなたの役</span>' + (a.roles.length ? a.roles.map(tape).join('') : '<span>（未定）</span>') + '</div>' +
     '<div class="say hello">' + ART.sheep('happy') + '<div class="bubble">' + esc(a.name) + 'さん、楽屋へようこそ。' + (hasScript ? '台本が届いているよ。さっそく開いてみよう' : '台本が届いたら、ここから稽古できるよ') + '</div></div>' +
+    noticeCard(r) +
     TOYS.row(['makeup', 'mirror', 'afro', 'fan', 'mic', 'towel']) +
     '<div class="modes">' + modes.map(function (m) {
       return '<button class="mode mm-' + m[0] + '"' + (m[4] ? ' aria-disabled="true"' : '') + ' data-mode="' + m[0] + '"><span class="m-ico">' + (m[3].indexOf('class=') < 0 ? m[3].replace('<svg', '<svg class="ico"') : m[3]) + '</span><span><b>' + m[1] + '</b><small>' + esc(m[2]) + '</small></span>' + (m[4] ? '<span class="soon">' + m[4] + '</span>' : '') + '</button>';
@@ -548,9 +549,14 @@ function renderHome(r) {
     '<h2 class="sec-t">楽屋花</h2><div class="flowers">' + flowerRow(w.id) +
     '<p>場ごとに覚え具合の花が咲きます。全部の場が満開になったら、千秋楽の準備はばっちり。</p></div>' +
     TOYS.row(['script', 'nosegl', 'castanet', 'tape', 'bottle']) +
-    '<p class="foot"><button class="btn quiet sm" id="dropPass">この入館パスを外す</button>' +
+    '<p class="foot"><a class="btn quiet sm" href="#/guide">使い方</a><button class="btn quiet sm" id="dropPass">この入館パスを外す</button>' +
     '<button class="btn quiet sm danger" id="wipeAll">この端末のデータをすべて消す</button></p></main>';
   bindToys(app.querySelector('.tatami-in'));
+  var nb = document.getElementById('noticeOk');
+  if (nb) nb.onclick = function () {
+    var log = store.get('noticeLog.' + w.id, []); log.unshift({ at: new Date().toISOString(), html: NOTICE_NOW }); store.set('noticeLog.' + w.id, log.slice(0, 5));
+    store.set('seen.' + w.id, snapOf(r)); var c = this.closest('.notice'); c.classList.add('gone'); setTimeout(function () { c.remove(); }, 300); };
+  if (!store.get('seen.' + w.id, null)) store.set('seen.' + w.id, Object.assign(snapOf(r), { noticeAt: '' }));
   var ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   var standalone = window.navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
   if (ios && !standalone && !store.get('a2hsSeen', false)) {
@@ -571,7 +577,7 @@ function renderHome(r) {
     var b = e.target.closest('.mode'); if (!b) return;
     var m = b.dataset.mode;
     if (m === 'learn') { if (r.linesAt) go('/w/' + w.id + '/learn'); else toast('セリフの割り振りができると使えます。いま舞台監督が準備しています'); return; }
-    if (m === 'drive') { toast('運転中モードはもうすぐ使えます'); return; }
+    if (m === 'drive') { if (r.linesAt) go('/w/' + w.id + '/drive'); else toast('セリフの割り振りができると使えます'); return; }
     if (m === 'listen') { if (hasAudio) go('/w/' + w.id + '/listen'); else toast('読み合わせの録音が届くと使えます'); return; }
     if (m === 'script') {
       if (!hasScript) { toast('確定版の台本が届くと開けます'); return; }
@@ -586,6 +592,32 @@ function renderHome(r) {
     var passes = store.get('passes', {}); delete passes[w.id]; store.set('passes', passes); store.del('me.' + w.id);
     toast('入館パスを外しました'); go('/');
   };
+}
+
+/* ===================== 楽屋のお知らせ =====================
+   前に見たときから変わったもの（台本の版・セリフの割り振り・録音）と、舞台監督からのお知らせを出す */
+function snapOf(r) {
+  return { script: r.script ? r.script.id : '', label: r.script ? r.script.label : '', linesAt: r.linesAt || '',
+    audios: (r.audios || []).map(function (a) { return a.id; }), noticeAt: r.work.noticeAt || '' };
+}
+var NOTICE_NOW = '';
+function noticeCard(r) {
+  var seen = store.get('seen.' + r.work.id, null), now = snapOf(r), items = [];
+  if (r.work.notice && r.work.noticeAt && (!seen || seen.noticeAt !== r.work.noticeAt)) {
+    items.push('<li class="nt-msg"><b>舞台監督より</b>（' + esc(day(r.work.noticeAt)) + '）<p>' + esc(r.work.notice).replace(/\n/g, '<br>') + '</p></li>');
+  }
+  if (seen) {
+    if (now.script && now.script !== seen.script) items.push('<li>台本が新しくなりました：<b>' + esc(now.label) + '</b>（確定版）</li>');
+    else if (now.linesAt && now.linesAt !== seen.linesAt) items.push('<li>セリフの割り振りが更新されました。「覚える」で確かめてください</li>');
+    var added = now.audios.filter(function (id) { return seen.audios.indexOf(id) < 0; }).length;
+    if (added) items.push('<li>読み合わせの録音が ' + added + ' 件届きました</li>');
+  }
+  var log = store.get('noticeLog.' + r.work.id, []);
+  var past = log.length ? '<details class="card notice-log"><summary>過去のお知らせ（' + log.length + '）</summary><ul>' +
+    log.map(function (x) { return '<li><small>' + esc(day(x.at)) + ' に読んだもの</small><ul>' + x.html + '</ul></li>'; }).join('') + '</ul></details>' : '';
+  NOTICE_NOW = items.join('');
+  if (!items.length) return past;
+  return '<div class="card notice" role="status"><h2>お知らせ</h2><ul>' + items.join('') + '</ul><button class="btn quiet sm" id="noticeOk">読みました</button></div>' + past;
 }
 
 /* ===================== 聞き流す（録音の再生） ===================== */
@@ -641,7 +673,7 @@ function loadTrack(x, work) {
     au.onended = function () { store.del('pos.' + x.id); tick(); };
     if ('mediaSession' in navigator) {
       try {
-        navigator.mediaSession.metadata = new MediaMetadata({ title: x.label, artist: work.title, album: 'もしょこむ楽屋', artwork: [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }] });
+        navigator.mediaSession.metadata = new MediaMetadata({ title: x.label, artist: work.title, album: '台本読み合わせ練習アプリ', artwork: [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }] });
         navigator.mediaSession.setActionHandler('play', function () { au.play(); });
         navigator.mediaSession.setActionHandler('pause', function () { au.pause(); });
         navigator.mediaSession.setActionHandler('seekbackward', function () { au.currentTime = Math.max(0, au.currentTime - 10); });
@@ -705,7 +737,7 @@ function studyOf(workId) {
 }
 function markStudy(workId, id, good) {
   var st = studyOf(workId), x = st[id] || { ok: 0, ng: 0, level: 0, streak: 0 }, now = Date.now();
-  if (good) { x.ok++; x.streak++; x.level = Math.min(4, (x.level || 0) + 1); x.next = now + GAP_DAYS[Math.min(4, x.level)] * 86400000; }
+  if (good) { delete x.changed; x.ok++; x.streak++; x.level = Math.min(4, (x.level || 0) + 1); x.next = now + GAP_DAYS[Math.min(4, x.level)] * 86400000; }
   else { x.ng++; x.streak = 0; x.level = Math.max(0, (x.level || 0) - 1); x.next = now; }
   x.last = good ? 1 : 0; x.at = now; st[id] = x; store.set('study.' + workId, st);
   return x;
@@ -793,8 +825,13 @@ function viewLearn(id) {
   if (!store.get('passes', {})[id] || !me) { go('/w/' + id); return; }
   document.body.className = 'room-theme'; document.body.style.setProperty('--tile', PROPS_TILE);
   app.innerHTML = '<header class="listenhead"><a class="back pill" href="#/w/' + esc(id) + '">← 楽屋へ</a><h1>' + ART.mirror.replace('class="ico"', 'class="ico h-ico"') + '覚える</h1><p>' + esc(me.work.title) + '</p></header><main class="wrap tatami-in" id="lrn">' + loading() + '</main>';
+  loadMyLines(id, me).then(function (x) { learnMenu(id, x[0], x[1]); })
+    .catch(function (e) { var m = document.getElementById('lrn'); if (m) m.innerHTML = '<div class="card">' + esc(e.message || '開けませんでした') + '</div>'; });
+}
+/* 自分の作品情報と、確定版のセリフ割り振りを取ってくる（端末に控えがあれば電波がなくても使う） */
+function loadMyLines(id, me) {
   var refresh = api('me', { workId: id }).then(function (r) { store.set('me.' + id, r); return r; }).catch(function () { return me; });
-  refresh.then(function (r) {
+  return refresh.then(function (r) {
     if (!r.script) throw { message: '確定版の台本がまだありません' };
     var key = 'lines.' + r.script.id, cached = store.get(key, null);
     if (cached && cached.updatedAt === r.linesAt) return [r, cached.lines];
@@ -803,8 +840,7 @@ function viewLearn(id) {
       try { store.set(key, { updatedAt: d.updatedAt, lines: d.lines }); } catch (e) { }
       return [r, d.lines];
     }, function (e) { if (cached) return [r, cached.lines]; throw e; });
-  }).then(function (x) { learnMenu(id, x[0], migrateLines(x[1])); })
-    .catch(function (e) { var m = document.getElementById('lrn'); if (m) m.innerHTML = '<div class="card">' + esc(e.message || '開けませんでした') + '</div>'; });
+  }).then(function (x) { return [x[0], migrateLines(x[1])]; });
 }
 function learnMenu(id, me, lines) {
   var main = document.getElementById('lrn'); if (!main) return;
@@ -819,20 +855,30 @@ function learnMenu(id, me, lines) {
   scenes = scenes.filter(function (sc, i) { return i > 0 || sc.ids.length || scenes.length === 1; });
   store.set('learnScenes.' + id, scenes.map(function (s2) { return { name: s2.name, ids: s2.ids }; }));
   var st = studyOf(id), myLines = lines.filter(isMine), total = myLines.length, now = Date.now();
+  /* 覚えたあとに台本の文字が変わったセリフは、覚え具合を1段戻して「変更あり」にする */
+  var changed = 0;
+  myLines.forEach(function (l) {
+    var x = st[l.id]; if (!l.chg || !x || x.chgSeen === l.chg) return;
+    if ((x.at || 0) < Date.parse(l.chg)) { x.level = Math.max(0, (x.level || 0) - 1); x.next = now; x.changed = 1; changed++; }
+    x.chgSeen = l.chg;
+  });
+  if (changed) store.set('study.' + id, st);
   var opt = Object.assign({ other: window.speechSynthesis ? 'tts' : 'auto', judge: (window.SpeechRecognition || window.webkitSpeechRecognition) ? 'voice' : 'self', dir: 'skip', rate: 1.1, strict: 'normal', kuroko: 'off' }, store.get('learnOpt', {}));
   if (!total) {
     main.innerHTML = '<div class="card"><p>あなたの役（' + esc(mine.join('、') || '未定') + '）のセリフが、割り振りの中に見つかりませんでした。</p><p class="note">配役か割り振りが変わったかもしれません。舞台監督に確かめてください。</p></div>';
     return;
   }
   /* 今日の10本ノック：①最近言えなかった（間違いが多い順）②復習の時期が来た ③まだ練習していない（台本の順） */
-  var weak = myLines.filter(function (l) { return st[l.id] && !st[l.id].last; }).sort(function (a, b) { return st[b.id].ng - st[a.id].ng; });
-  var due = myLines.filter(function (l) { return st[l.id] && st[l.id].last && (st[l.id].next || 0) <= now; }).sort(function (a, b) { return (st[a.id].next || 0) - (st[b.id].next || 0); });
+  var weak = myLines.filter(function (l) { return st[l.id] && (!st[l.id].last || st[l.id].changed); }).sort(function (a, b) { return (st[b.id].changed ? 99 : 0) + st[b.id].ng - (st[a.id].changed ? 99 : 0) - st[a.id].ng; });
+  var due0 = function (l) { return !st[l.id].changed; };
+  var due = myLines.filter(function (l) { return st[l.id] && st[l.id].last && due0(l) && (st[l.id].next || 0) <= now; }).sort(function (a, b) { return (st[a.id].next || 0) - (st[b.id].next || 0); });
   var fresh = myLines.filter(function (l) { return !st[l.id]; });
   var knock = weak.concat(due, fresh).slice(0, 10);
   var counts = [0, 0, 0, 0], none = 0;
   myLines.forEach(function (l) { var g = stageOf(st[l.id]); if (g < 0) none++; else counts[g]++; });
   main.innerHTML = '<div class="say hello">' + ART.sheep('happy') + '<div class="bubble">' + esc(me.actor.name) + 'さんのセリフは ' + total + ' 個。' +
     (knock.length ? '今日の10本ノックを用意したよ。' : '今日の復習はおしまい。えらい！') + '</div></div>' +
+    (changed ? '<div class="card notice"><b>あなたのセリフが ' + changed + ' か所変わりました。</b><p class="note" style="margin:4px 0 0">覚え具合を1段戻して、10本ノックに入れました。「変更あり」の印が付いています。</p></div>' : '') +
     '<div class="stagebar" aria-label="覚え具合">' + LEVELS.map(function (nm, i) { return '<span class="sg sg' + i + '" style="flex:' + (counts[i] || 0.0001) + '">' + (counts[i] ? nm + ' ' + counts[i] : '') + '</span>'; }).join('') +
     (none ? '<span class="sg sgn" style="flex:' + none + '">未練習 ' + none + '</span>' : '') + '</div>' +
     '<div class="scenes">' +
@@ -842,6 +888,9 @@ function learnMenu(id, me, lines) {
       return '<button class="mode scene-pick" data-s="' + i + '"><span><b>' + esc(sc.name) + '</b><small>あなたのセリフ ' + sc.ids.length + ' 個</small></span><span class="pct">' + (sc.ids.length ? Math.round(sum / sc.ids.length * 100) : 0) + '%</span></button>';
     }).join('') +
     (scenes.length > 1 ? '<button class="mode scene-pick all" data-s="all"><span><b>通しで練習</b><small>はじめから最後まで</small></span></button>' : '') + '</div>' +
+    '<div class="card lsearch"><label class="f">返し稽古：セリフをさがす<input class="in" id="lnFind" type="search" placeholder="例：あの日の約束" autocomplete="off"></label><div id="lnHits"></div>' +
+    '<p class="note" style="margin:6px 0 0">演出に「〇〇のあたりから返して」と言われたら、言葉で探してそこから練習できます。</p></div>' +
+    '<p style="text-align:center;margin:8px 0 14px"><a class="btn quiet sm" href="#/w/' + esc(id) + '/print">自分のセリフに印を付けて印刷</a></p>' +
     '<details class="card lopts"><summary>練習のしかた</summary>' +
     optRow('kuroko', '黒子モード（歩きながら練習）', [['off', 'つかわない'], ['on', 'つかう']], opt) +
     '<p class="note">黒子モードでは、詰まったときに画面のどこかを押すと、黒子がセリフの頭を小声でささやきます。</p>' +
@@ -854,6 +903,24 @@ function learnMenu(id, me, lines) {
     var b = e.target.closest('[data-v]'); if (!b) return;
     var g = b.parentNode; opt[g.dataset.o] = b.dataset.v; store.set('learnOpt', opt);
     g.querySelectorAll('.rchip').forEach(function (c) { c.classList.toggle('on', c === b); });
+  };
+  var hits = document.getElementById('lnHits');
+  document.getElementById('lnFind').oninput = function () {
+    var q = normSay(this.value);
+    if (q.length < 2) { hits.innerHTML = ''; return; }
+    var found = [];
+    lines.forEach(function (l, i) { if ((l.k === 'line' || l.k === 'dir') && (normSay(l.t).indexOf(q) >= 0 || normSay(l.y).indexOf(q) >= 0)) found.push(i); });
+    hits.innerHTML = found.length ? found.slice(0, 8).map(function (i) {
+      var l = lines[i];
+      return '<button class="hit" data-i="' + i + '"><small>' + esc(l.k === 'line' ? roleText(l) : 'ト書き') + (isMine(l) ? '（あなた）' : '') + '</small>' + esc(l.t.slice(0, 50)) + '</button>';
+    }).join('') + (found.length > 8 ? '<p class="note">ほか ' + (found.length - 8) + ' 件。言葉を足して絞ってください</p>' : '') : '<p class="note">見つかりませんでした</p>';
+  };
+  hits.onclick = function (e) {
+    var b = e.target.closest('.hit'); if (!b) return;
+    var i = +b.dataset.i, end = lines.length;
+    for (var k = i + 1; k < lines.length; k++) if (lines[k].k === 'scene') { end = k; break; }
+    var start = i; for (var c = 0; c < 1 && start > 0 && lines[start - 1].k !== 'scene'; c++) start--;
+    learnRun(id, me, lines.slice(start, end), isMine, opt, '返し：' + lines[i].t.slice(0, 12) + '…');
   };
   main.querySelector('.scenes').onclick = function (e) {
     var b = e.target.closest('.scene-pick'); if (!b) return;
@@ -953,7 +1020,8 @@ function learnRun(id, me, seq, isMine, opt, title) {
     var beats = beatsOf(l.t), bi = 0, hint = 0, scores = [], whisperAt = 0, finished = false, heardAll = '';
     var drawCard = function (extra) {
       card.className = 'lrn-card mine' + (opt.kuroko === 'on' ? ' kuroko' : '');
-      card.innerHTML = '<span class="lnchip" style="--c:' + roleColor(l.r) + '">' + esc(who(l)) + '（あなた）</span>' +
+      var stx = studyOf(id)[l.id];
+      card.innerHTML = '<span class="lnchip" style="--c:' + roleColor(l.r) + '">' + esc(who(l)) + '（あなた）</span>' + (stx && stx.changed ? '<span class="chgtag">変更あり</span>' : '') +
         '<p class="lrn-t">' + beats.map(function (b, k) {
           if (k < bi) return '<span class="bt done">' + esc(b) + '</span>';
           if (k === bi) return '<span class="bt now">' + esc(b.slice(0, hint)) + '<span class="mask">' + esc(b.slice(hint).replace(/[^\s、。！？]/g, '○')) + '</span></span>';
@@ -1130,6 +1198,259 @@ function confetti() {
   document.body.appendChild(box); setTimeout(function () { box.remove(); }, 2600);
 }
 
+/* ===================== 自分のセリフに印を付けた印刷用の台本 ===================== */
+function viewPrint(id) {
+  var me = store.get('me.' + id, null);
+  if (!store.get('passes', {})[id] || !me) { go('/w/' + id); return; }
+  document.body.className = 'print-theme';
+  app.innerHTML = '<div class="noprint printbar"><a class="btn quiet sm" href="#/w/' + esc(id) + '/learn">← 戻る</a><button class="btn brand" id="doPrint">印刷する</button>' +
+    '<label class="chk"><input type="checkbox" id="prDir" checked> ト書きも入れる</label></div><main class="printdoc" id="pr">' + loading() + '</main>';
+  loadMyLines(id, me).then(function (x) {
+    var r = x[0], lines = x[1], mine = r.actor.roles || [];
+    var isMine = function (l) { return l.k === 'line' && (l.rs || [l.r]).some(function (n) { return mine.indexOf(n) >= 0; }); };
+    var draw = function () {
+      var dir = document.getElementById('prDir').checked;
+      document.getElementById('pr').innerHTML = '<h1>' + esc(r.work.title) + '</h1><p class="pr-sub">' + esc(r.actor.name) + '（' + esc(mine.join('・')) + '）用・' + esc(r.script ? r.script.label : '') + '・右の余白に段取りを書き込めます</p>' +
+        lines.map(function (l) {
+          if (l.k === 'skip') return '';
+          if (l.k === 'scene') return '<h2>' + esc(l.t) + '</h2>';
+          if (l.k === 'dir') return dir ? '<div class="pr-row pr-dir"><span></span><p>' + esc(l.t) + '</p><i></i></div>' : '';
+          return '<div class="pr-row' + (isMine(l) ? ' pr-mine' : '') + '"><span>' + esc(roleText(l)) + '</span><p>' + esc(l.t) + '</p><i></i></div>';
+        }).join('');
+    };
+    draw();
+    document.getElementById('prDir').onchange = draw;
+    document.getElementById('doPrint').onclick = function () { window.print(); };
+  }).catch(function (e) { document.getElementById('pr').innerHTML = '<div class="card">' + esc(e.message || '開けませんでした') + '</div>'; });
+}
+
+/* ===================== 運転中（耳と声だけで練習） =====================
+   画面を見ずに使う。相手のセリフを読み上げ（録音があれば録音）、自分の番は「ポン」と鳴らして黙って待つ。
+   待ち時間のあと、答えとして自分のセリフを読み上げる（切り替え可）。
+   車のハンドルボタンやイヤホンの「次へ／前へ／一時停止」でも操作できる（Media Session）。 */
+var drive = { on: false, paused: false, timer: null, wake: null, idx: 0, keep: null, audio: null, url: '', audioId: '' };
+function stopDrive() {
+  drive.on = false; clearTimeout(drive.timer);
+  try { speechSynthesis.cancel(); } catch (e) { }
+  try { if (drive.wake) drive.wake.release(); } catch (e) { } drive.wake = null;
+  if (drive.keep) { drive.keep.pause(); }
+  if (drive.audio) drive.audio.pause();
+  if ('mediaSession' in navigator) ['play', 'pause', 'nexttrack', 'previoustrack'].forEach(function (a) { try { navigator.mediaSession.setActionHandler(a, null); } catch (e) { } });
+}
+/* 無音を流し続けて、ロック画面や車のボタンから操作できる状態を保つ */
+function silentWav() {
+  var n = 8000, buf = new ArrayBuffer(44 + n), v = new DataView(buf), w = function (o, t) { for (var i = 0; i < t.length; i++) v.setUint8(o + i, t.charCodeAt(i)); };
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+  for (var i = 0; i < n; i++) v.setUint8(44 + i, 128);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+function pon(high) {
+  try {
+    var C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+    drive.ctx = drive.ctx || new C(); var c = drive.ctx, o = c.createOscillator(), g = c.createGain();
+    o.frequency.value = high ? 1320 : 880; o.type = 'sine'; g.gain.setValueAtTime(0.0001, c.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.35, c.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + 0.35);
+    o.connect(g); g.connect(c.destination); o.start(); o.stop(c.currentTime + 0.4);
+  } catch (e) { }
+}
+function viewDrive(id) {
+  var me = store.get('me.' + id, null);
+  if (!store.get('passes', {})[id] || !me) { go('/w/' + id); return; }
+  document.body.className = 'drive-theme';
+  app.innerHTML = '<header class="listenhead drivehead"><a class="back pill" href="#/w/' + esc(id) + '">← 楽屋へ</a><h1>運転中</h1><p>' + esc(me.work.title) + '</p></header><main class="wrap" id="drv">' + loading() + '</main>';
+  loadMyLines(id, me).then(function (x) { driveMenu(id, x[0], x[1]); })
+    .catch(function (e) { var m = document.getElementById('drv'); if (m) m.innerHTML = '<div class="card">' + esc(e.message || '開けませんでした') + '</div>'; });
+}
+function driveMenu(id, me, lines) {
+  var main = document.getElementById('drv'); if (!main) return;
+  var mine = me.actor.roles || [];
+  var isMine = function (l) { return l.k === 'line' && (l.rs || [l.r]).some(function (r) { return mine.indexOf(r) >= 0; }); };
+  var scenes = [], cur = { name: '最初から', start: 0, n: 0 };
+  lines.forEach(function (l, i) { if (l.k === 'scene') { if (i > 0 || cur.n) scenes.push(cur); cur = { name: l.t, start: i, n: 0 }; } else if (isMine(l)) cur.n++; });
+  scenes.push(cur); scenes = scenes.filter(function (sc) { return sc.n > 0; });
+  var opt = Object.assign({ answer: 'on', wait: '1', rate: 1.1 }, store.get('driveOpt', {}));
+  if (!/^[\d.]+$/.test(opt.wait)) opt.wait = { short: '0.8', long: '1.5' }[opt.wait] || '1';
+  main.innerHTML = '<div class="drv-warn"><b>走り出す前に設定してください。</b>走行中は画面を見たり触ったりしないでください。操作は、車のハンドルボタン・イヤホンのボタン・停車中に。</div>' +
+    '<div class="scenes">' + scenes.map(function (sc, i) {
+      return '<button class="mode scene-pick drv-pick" data-s="' + i + '"><span><b>' + esc(sc.name) + '</b><small>あなたのセリフ ' + sc.n + ' 個</small></span><span class="pct">▶</span></button>';
+    }).join('') + (scenes.length > 1 ? '<button class="mode scene-pick drv-pick all" data-s="all"><span><b>通しで練習</b><small>はじめから最後まで</small></span><span class="pct">▶</span></button>' : '') + '</div>' +
+    '<details class="card lopts"><summary>練習のしかた</summary>' +
+    optRow('answer', '自分の番のあと', [['on', '答えを読み上げる'], ['off', '読み上げない（上級）']], opt) +
+    optRow('wait', '自分の番の待ち時間', [['0.8', '0.8倍（早口）'], ['1', '1倍'], ['1.2', '1.2倍'], ['1.5', '1.5倍（ゆっくり）']], opt) +
+    '<p class="note">自分の番では「ポン」と鳴って、セリフの長さに合わせて待ちます。声に出して言ってみてください。待ち時間のあと「ポポン」と鳴って答えが流れます。</p></details>' +
+    '<div class="card drv-how"><b>ボタン操作</b><ul><li>一時停止／再開：ハンドルやイヤホンの再生ボタン、または画面の大きなボタン</li><li>次へ：次のセリフへ飛ばす</li><li>前へ：自分の番を、きっかけ（相手のセリフ）からやり直す</li></ul>' +
+    '<p class="note">iPhoneでは画面を消すと読み上げが止まることがあります。画面はつけたまま、ホルダーに置いて使ってください（自動で暗くなりません）。</p></div>';
+  main.querySelector('.lopts').onclick = function (e) {
+    var b = e.target.closest('[data-v]'); if (!b) return;
+    var g = b.parentNode; opt[g.dataset.o] = b.dataset.v; store.set('driveOpt', opt);
+    g.querySelectorAll('.rchip').forEach(function (c) { c.classList.toggle('on', c === b); });
+  };
+  main.querySelector('.scenes').onclick = function (e) {
+    var b = e.target.closest('.scene-pick'); if (!b) return;
+    var v = b.dataset.s, seq, title;
+    if (v === 'all') { seq = lines.slice(); title = '通し'; }
+    else { var sc = scenes[+v], k = lines.indexOf(lines.filter(function (l, i) { return i > sc.start && l.k === 'scene'; })[0]); seq = lines.slice(sc.start, k > 0 ? k : lines.length); title = sc.name; }
+    driveRun(id, me, seq.filter(function (l) { return l.k === 'line' || l.k === 'scene'; }), isMine, opt, title);
+  };
+}
+function driveRun(id, me, seq, isMine, opt, title) {
+  var main = document.getElementById('drv'); if (!main) return;
+  stopDrive(); drive.on = true; drive.paused = false; drive.idx = 0;
+  try { if (navigator.wakeLock) navigator.wakeLock.request('screen').then(function (w) { drive.wake = w; }).catch(function () { }); } catch (e) { }
+  if (!drive.keep) { drive.keep = new Audio(silentWav()); drive.keep.loop = true; }
+  drive.keep.play().catch(function () { });
+  var voice = null;
+  try { voice = speechSynthesis.getVoices().filter(function (v) { return /^ja/i.test(v.lang); })[0] || null; } catch (e) { }
+  var waitPerChar = 0.18 * (Number(opt.wait) || 1);
+  main.innerHTML = '<div class="drv-run"><p class="drv-title">' + esc(title) + '</p><p class="drv-who" id="drvWho"></p><p class="drv-t" id="drvT"></p>' +
+    '<button class="drv-big" id="drvToggle" aria-label="一時停止">❚❚</button>' +
+    '<div class="drv-row"><button class="drv-sm" id="drvPrev" aria-label="きっかけからもう一度">⟲ きっかけから</button><button class="drv-sm" id="drvNext" aria-label="次のセリフへ">次へ ›</button></div>' +
+    '<button class="btn quiet sm" id="drvQuit">おわる</button></div>';
+  var whoEl = document.getElementById('drvWho'), tEl = document.getElementById('drvT'), tg = document.getElementById('drvToggle');
+  var mineCount = seq.filter(isMine).length;
+  var voiceFor = function (name) {
+    var h = 0; String(name || '').split('').forEach(function (c) { h = (h * 31 + c.charCodeAt(0)) >>> 0; });
+    return { pitch: 0.8 + (h % 9) * 0.06, rate: (opt.rate || 1.1) * (0.9 + ((h >> 4) % 5) * 0.05) };
+  };
+  var token = 0; /* 操作のたびに増やし、古い続きが走らないようにする */
+  var speak = function (text, v, then) {
+    var my = token;
+    try {
+      speechSynthesis.cancel();
+      var u = new SpeechSynthesisUtterance(text); u.lang = 'ja-JP'; if (voice) u.voice = voice; u.rate = v.rate; u.pitch = v.pitch;
+      var fin = false, end = function () { if (fin) return; fin = true; clearTimeout(drive.timer); if (drive.on && !drive.paused && my === token) then(); };
+      u.onend = end; u.onerror = end; speechSynthesis.speak(u);
+      drive.timer = setTimeout(end, 2500 + text.length * 260);
+    } catch (e) { then(); }
+  };
+  var clip = function (l, then) {
+    var a = l.audio, au = (me.audios || []).filter(function (x) { return a && x.id === a.audioId; })[0];
+    if (!a || !au) return false;
+    var my = token;
+    scriptBlob(Object.assign({ workId: id }, au), null, 'audio', true).then(function (blob) {
+      if (!drive.on || my !== token) return;
+      if (!drive.audio) drive.audio = new Audio();
+      if (drive.audioId !== au.id) { if (drive.url) URL.revokeObjectURL(drive.url); drive.url = URL.createObjectURL(blob); drive.audio.src = drive.url; drive.audioId = au.id; }
+      var A = drive.audio; A.currentTime = a.start; A.play().catch(function () { then(); });
+      var stopAt = function () { if (A.currentTime >= a.end) { A.pause(); A.removeEventListener('timeupdate', stopAt); if (drive.on && my === token) then(); } };
+      A.addEventListener('timeupdate', stopAt);
+    }).catch(function () { if (my === token) then(); });
+    return true;
+  };
+  var meta = function (l) {
+    if (!('mediaSession' in navigator) || !window.MediaMetadata) return;
+    try { navigator.mediaSession.metadata = new MediaMetadata({ title: isMine(l) ? 'あなたの番' : (l.r || title), artist: me.work.title, album: '運転中モード', artwork: [{ src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' }] }); } catch (e) { }
+  };
+  var play = function () {
+    if (!drive.on || drive.paused) return;
+    clearTimeout(drive.timer); token++;
+    if (drive.idx >= seq.length) return finish();
+    var l = seq[drive.idx], step = function () { drive.idx++; play(); };
+    meta(l);
+    if (l.k === 'scene') { whoEl.textContent = ''; tEl.textContent = l.t; speak(l.t, { pitch: 1, rate: 1.1 }, function () { drive.timer = setTimeout(step, 600); }); return; }
+    if (isMine(l)) {
+      whoEl.textContent = 'あなたの番'; tEl.textContent = '（声に出して言ってみよう）';
+      pon(false);
+      var my = token, ms = 1500 * Math.min(1.3, Number(opt.wait) || 1) + normSay(l.t).length * waitPerChar * 1000;
+      drive.timer = setTimeout(function () {
+        if (my !== token || drive.paused) return;
+        if (opt.answer === 'off') { step(); return; }
+        pon(true); tEl.textContent = l.t;
+        setTimeout(function () { if (my === token && !drive.paused) speak(l.t, { pitch: 1.05, rate: (opt.rate || 1.1) * 1.05 }, function () { drive.timer = setTimeout(step, 700); }); }, 450);
+      }, ms);
+      return;
+    }
+    whoEl.textContent = l.rs && l.rs.length > 1 ? l.rs.join('・') : l.r; tEl.textContent = l.t;
+    var after = function () { drive.timer = setTimeout(step, 350); };
+    if (clip(l, after)) return;
+    speak(l.t, voiceFor(l.r), after);
+  };
+  var setPaused = function (p) {
+    drive.paused = p; token++; clearTimeout(drive.timer);
+    try { speechSynthesis.cancel(); } catch (e) { } if (drive.audio) drive.audio.pause();
+    tg.textContent = p ? '▶' : '❚❚'; tg.setAttribute('aria-label', p ? '再開' : '一時停止');
+    if ('mediaSession' in navigator) try { navigator.mediaSession.playbackState = p ? 'paused' : 'playing'; } catch (e) { }
+    if (!p) play();
+  };
+  var jump = function (d) { drive.idx = Math.max(0, Math.min(seq.length, drive.idx + d)); if (drive.paused) setPaused(false); else play(); };
+  /* 「前へ」：自分の番なら、直前の相手のセリフ（きっかけ）から言い直す */
+  var redo = function () {
+    var i = Math.min(drive.idx, seq.length - 1);
+    if (seq[i] && isMine(seq[i])) { while (i > 0 && isMine(seq[i])) i--; if (seq[i].k === 'scene') i++; }
+    drive.idx = Math.max(0, i); if (drive.paused) setPaused(false); else play();
+  };
+  var finish = function () {
+    stopDrive(); whoEl.textContent = ''; tEl.textContent = 'おつかれさまでした。あなたのセリフ ' + mineCount + ' 個を通しました。';
+    try { var u = new SpeechSynthesisUtterance('おつかれさまでした'); u.lang = 'ja-JP'; speechSynthesis.speak(u); } catch (e) { }
+    tg.textContent = '↻'; tg.onclick = function () { driveRun(id, me, seq, isMine, opt, title); };
+  };
+  tg.onclick = function () { setPaused(!drive.paused); };
+  document.getElementById('drvPrev').onclick = redo;
+  document.getElementById('drvNext').onclick = function () { jump(1); };
+  document.getElementById('drvQuit').onclick = function () { stopDrive(); viewDrive(id); };
+  if ('mediaSession' in navigator) {
+    var h = { play: function () { setPaused(false); }, pause: function () { setPaused(true); }, nexttrack: function () { jump(1); }, previoustrack: redo };
+    Object.keys(h).forEach(function (a) { try { navigator.mediaSession.setActionHandler(a, h[a]); } catch (e) { } });
+    try { navigator.mediaSession.playbackState = 'playing'; } catch (e) { }
+  }
+  pon(true); drive.timer = setTimeout(play, 600);
+}
+
+/* ===================== 使い方 ===================== */
+var GUIDE = {
+  member: { title: '劇団員の使い方', back: '#/', items: [
+    ['はじめに（1回だけ）', '<ol><li>舞台監督から届いた<b>招待リンク</b>を開く（または楽屋口で自分の作品のポスターを押し、6文字の<b>入館コード</b>を入れる）</li>' +
+      '<li>iPhoneは、Safariの共有ボタン ⬆︎ から「ホーム画面に追加」。ホーム画面のアイコンから開き、入館コードをもう一度だけ入れます</li>' +
+      '<li>Androidは、Chromeのメニューから「ホーム画面に追加」</li></ol><p class="note">入館コードは自分専用です。ほかの人に教えないでください。</p>'],
+    ['台本を見る', '<p>確定版の台本が届くと開けます。一度開くと端末に保存されるので、電波がない稽古場でも読めます。</p>'],
+    ['覚える', '<ul><li><b>今日の10本ノック</b>：苦手なセリフと、復習の時期が来たセリフを自動で10本選びます。毎日3分でOK</li>' +
+      '<li>相手のセリフが流れたあと、自分の番で止まります。声に出して言うと、言えたかを<b>赤ペン</b>で見せてくれます（緑＝言えた、赤＝抜けた、取り消し線＝余計）</li>' +
+      '<li>長いセリフは区切り（ビート）ごとに言えばOK</li>' +
+      '<li><b>黒子モード</b>：歩きながら練習するとき、詰まったら画面のどこかを押すと、セリフの頭をささやいてくれます</li>' +
+      '<li>「練習のしかた」で、判定のきびしさ（覚え始め／ふつう／本番前）を変えられます</li></ul>' +
+      '<p class="note">覚え具合は「種 → 芽 → つぼみ → 満開」。楽屋の花が咲いていきます。記録はこの端末だけに残ります。</p>'],
+    ['聞き流す', '<p>読み合わせの録音を流します。画面を消しても、ほかのアプリを開いても流れ続けます。止めた場所を覚えています。</p>'],
+    ['運転中', '<ul><li>相手のセリフを読み上げ、自分の番は「ポン」と鳴って待ちます。声に出して言ってみてください。少しすると「ポポン」と鳴って答えが流れます</li>' +
+      '<li>車のハンドルボタンやイヤホンの「再生／次へ／前へ」で操作できます</li><li><b>走り出す前に</b>場面を選び、走行中は画面を見たり触ったりしないでください</li>' +
+      '<li>iPhoneは画面をつけたまま、ホルダーに置いて使ってください</li></ul>'],
+    ['お知らせ', '<p>台本が新しくなったとき、セリフの割り振りが変わったとき、録音が届いたとき、舞台監督からの連絡があるときに、楽屋に「お知らせ」が出ます。</p>'],
+    ['困ったとき', '<ul><li><b>「入館パスが変わりました」</b>：舞台監督が新しいコードを出しました。新しいコードをもらって入れ直してください</li>' +
+      '<li><b>声の判定が動かない</b>：マイクの許可を確かめてください（iPhoneは「設定 → Safari → マイク」）。ホーム画面版で動かないときは、「自分で〇×」に切り替えられます</li>' +
+      '<li><b>画面が古いまま</b>：上に「新しい版があります」と出たら押してください</li>' +
+      '<li><b>機種変更・端末をゆずるとき</b>：楽屋の一番下「この端末のデータをすべて消す」</li></ul>'],
+    ['個人情報について', '<p>サーバーに保存するのは、名前・役・入館コード・最後に入った日だけです。練習の記録や声は、この端末から外に出ません（声の判定は端末の音声認識を使います）。</p>']
+  ] },
+  admin: { title: '管理者（舞台監督）の使い方', back: '#/admin', items: [
+    ['全体の流れ', '<ol><li><b>作品をつくる</b>：プロンプトデスク →「＋ 新しい作品」。ポスター・公演日・会場を登録</li>' +
+      '<li><b>台本を入れる</b>：台本棚にPDFを入れ、「確定版」にする（劇団員に届くのは確定版だけ）</li>' +
+      '<li><b>役を登録</b>：作品の設定 → ① 役。台本の登場人物一覧からAIで読み込めます</li>' +
+      '<li><b>セリフを割り振る</b>：② セリフ。<b>PCで</b>「台本の上で囲む」を使い、役を選んでセリフを四角で囲みます（数字キー1〜9で役を選べます）</li>' +
+      '<li><b>読みを確かめる</b>：「一覧で確かめる」で、AIがふりがなを付けます。固有名詞や読み方の難しい言葉を直してください（声の判定に使います）</li>' +
+      '<li><b>配役して招待</b>：出演者を登録し、「招待リンクをコピー」して本人にだけ送る</li>' +
+      '<li><b>状態を「稽古中」に</b>：楽屋口に作品が出ます</li></ol>'],
+    ['録音', '<p>③ 録音から、読み合わせの録音を入れると「聞き流す」で流れます。録音とセリフを対応づけると、「覚える」「運転中」の相手役が録音の声になります。</p>'],
+    ['台本が直ったとき', '<p>新しいPDFを台本棚に入れて確定版にすると、劇団員の楽屋に「台本が新しくなりました」と出ます。割り振りは新しい版にもう一度行ってください（前の版の割り振りを引き継ぐボタンがあります）。</p>'],
+    ['劇団員へのお知らせ', '<p>作品の設定の「劇団員へのお知らせ」に書いて保存すると、楽屋に出ます。空にして保存すると消えます。</p>'],
+    ['管理者を増やす', '<ol><li>プロンプトデスクの下「管理者の追加・一覧」→ 名前を入れて追加</li><li>出てきた<b>はじめのコード</b>を本人に直接伝える（画面を閉じると二度と出ません）</li>' +
+      '<li>本人が最初に入ると、自分だけのコードを決める画面になります</li></ol>' +
+      '<p class="note">辞めた人は「止める」。コードはすぐ使えなくなり、データは消えません。コードを忘れた人には「はじめのコードを出し直す」。</p>'],
+    ['入館コードの管理', '<ul><li>コードが漏れたら「コードを作り直す」。古いコードと、そのコードで入っていた端末はすぐ使えなくなります</li>' +
+      '<li>降板した人は「無効にする」（記録は残る）か「削除」</li></ul>'],
+    ['公演が終わったら', '<p>状態を「終演」にすると<b>保管庫</b>に入ります。劇団員は思い出として台本や録音を見返せますが、割り振り・録音・配役は読むだけになります。人に見せたくない作品は「非公開」に。</p>'],
+    ['共用PCを使うとき', '<p>管理者の画面は、この端末で30日間ログインしたままになります。共用のPCでは使い終わったら「ログアウト」を押してください。</p>']
+  ] }
+};
+function viewGuide(kind) {
+  var g = GUIDE[kind];
+  document.body.className = kind === 'admin' ? 'day' : 'night';
+  var head = kind === 'admin' ? dayHead(g.title, '<a class="btn ghost sm" href="' + g.back + '">← 戻る</a>') :
+    demoBar() + '<header class="listenhead"><a class="back pill" href="javascript:history.back()">← 戻る</a><h1>使い方</h1><p>' + esc(g.title) + '</p></header>';
+  app.innerHTML = head + '<main class="wrap guide">' + g.items.map(function (it, i) {
+    return '<details class="card"' + (i === 0 ? ' open' : '') + '><summary>' + esc(it[0]) + '</summary><div class="gd">' + it[1] + '</div></details>';
+  }).join('') + '<p class="note" style="text-align:center">台本読み合わせ練習アプリ・劇団もしょこむ</p></main>';
+}
+
 /* ===================== 管理：ログイン ===================== */
 function dayHead(title, right, tab) {
   var tabs = tab ? '<nav class="tabs" aria-label="管理メニュー"><a href="#/admin"' + (tab === 'desk' ? ' aria-current="page"' : '') + '>プロンプトデスク</a>' +
@@ -1148,7 +1469,7 @@ function viewAdminLogin() {
     e.preventDefault();
     var code = document.getElementById('adminCode').value;
     api('adminLogin', { code: code }).then(function (r) {
-      store.set('admin', r.token); prefetch([['desk'], ['shelf', {}]]);
+      store.set('admin', r.token); if (r.name) store.set('adminName', r.name); prefetch([['desk'], ['shelf', {}]]);
       if (r.mustSet) { store.set('adminMustSet', true); go('/admin/code'); } else { store.del('adminMustSet'); go('/admin'); }
     })
       .catch(function (err) { document.getElementById('loginSay').textContent = err.message; });
@@ -1161,19 +1482,22 @@ function viewDesk() {
     '<main class="wrap"><div class="row" style="justify-content:space-between;margin-bottom:14px">' +
     '<p class="note" style="margin:0">作品ごとの状態です。ランプ：緑＝稽古中、黄＝準備中、灰＝終演</p>' +
     '<a class="btn main" href="#/admin/w/new">＋ 新しい作品</a></div><div class="desk" id="desk">' + loading() + '</div>' +
-    '<p class="note" style="margin-top:22px;text-align:center"><a href="#/admin/code">管理者コードを変える</a>　・　<a href="check.html">この端末の動作チェック</a></p></main>';
+    '<p class="note" style="margin-top:22px;text-align:center"><a href="#/admin/guide">使い方</a>　・　<a href="#/admin/team">管理者の追加・一覧</a>　・　<a href="#/admin/code">自分の管理者コードを変える</a>　・　<a href="check.html">この端末の動作チェック</a></p></main>';
   document.getElementById('logout').onclick = logout;
   cachedAll([['desk']], function (r, old) {
     var works = r[0];
     var d = document.getElementById('desk'); if (!d) return;
     if (!old) { prefetch([['shelf', {}]]); works.forEach(function (w) { prefetch([['cast', { workId: w.id }]]); }); }
     if (!works.length) { d.innerHTML = '<div class="card"><h2>最初の作品を登録しましょう</h2><p class="note">ポスター、公演日、出演者を登録すると、劇団員に入館パスを配れます。</p></div>'; return; }
-    d.innerHTML = works.map(function (w) {
+    var deskRow = function (w) {
       return '<a class="deskrow" href="#/admin/w/' + esc(w.id) + '"><span class="thumb" data-art="' + esc(w.id) + '">' + posterArt(w, true) + '</span>' +
         '<span><b>' + esc(w.title) + '</b><small>' + esc(dateLine(w)) + '</small><small>出演者 ' + w.castCount + '人・入館済み ' + w.enteredCount + '人</small>' +
         '<small>台本：' + (w.finalLabel ? '確定版 ' + esc(w.finalLabel) : '確定版なし') + (w.draftCount ? '・下書き ' + w.draftCount : '') + '</small></span>' +
         '<span class="lamp ' + esc(w.status) + '">' + STATUS_LABEL[w.status] + '</span></a>';
-    }).join('');
+    };
+    var live = works.filter(function (w) { return w.status !== 'closed'; }), past = works.filter(function (w) { return w.status === 'closed'; });
+    d.innerHTML = live.map(deskRow).join('') +
+      (past.length ? '<details class="archive"><summary>保管庫（終演した作品 ' + past.length + '）</summary>' + past.map(deskRow).join('') + '</details>' : '');
     var byId = {}; works.forEach(function (w) { byId[w.id] = w; });
     loadPosters(works, function (id) { var a = document.querySelector('[data-art="' + id + '"]'); if (a) a.innerHTML = posterArt(byId[id], true); });
   }).catch(function (e) { if (!onAuthError(e, 'admin')) document.getElementById('desk').innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
@@ -1199,7 +1523,7 @@ function renderAdminWork(w, cast, roles) {
   var opts = ['prep', 'rehearsal', 'closed', 'hidden'].map(function (s) {
     return '<option value="' + s + '"' + (w.status === s ? ' selected' : '') + '>' + STATUS_LABEL[s] + '</option>';
   }).join('');
-  main.innerHTML =
+  main.innerHTML = (w.status === 'closed' ? '<div class="card archived"><b>保管庫に入っている作品です</b><p class="note" style="margin:4px 0 0">終演した作品は、劇団員が思い出として台本や録音を見返せるよう残してあります。割り振り・録音・配役は読むだけです。直すときは、状態を「稽古中」か「準備中」に戻して保存してください。</p></div>' : '') +
     '<form class="card form" id="workForm"><h2>作品の情報</h2>' +
     '<label class="f">作品名<input class="in" name="title" required value="' + esc(w.title) + '" placeholder="もし夜が来なくても、夢を見る。"></label>' +
     '<div class="two"><label class="f">初日<input class="in" type="date" name="firstDate" value="' + esc(w.firstDate) + '"></label>' +
@@ -1207,12 +1531,14 @@ function renderAdminWork(w, cast, roles) {
     '<div class="two"><label class="f">会場<input class="in" name="venue" value="' + esc(w.venue) + '" placeholder="釜石市民ホールTETTO"></label>' +
     '<label class="f">状態<select class="in" name="status">' + opts + '</select><span>「非公開」は楽屋口に出ません</span></label></div>' +
     (w.id ? '<div class="posterpick"><span class="thumb" id="pthumb">' + posterArt(w, true) + '</span><div><label class="btn quiet">ポスター画像を選ぶ<input type="file" accept="image/*" id="pfile" class="sr"></label><p class="note">スマホで撮った写真でも大丈夫。自動で小さくしてから保存します。</p></div></div>' : '<p class="note">保存すると、ポスター画像と出演者を登録できます。</p>') +
+    (w.id ? '<label class="f">劇団員へのお知らせ<textarea class="in" name="notice" rows="3" maxlength="500" placeholder="例：12/5の稽古は18時から。3場のセリフを直しました">' + esc(w.notice || '') + '</textarea><span>書き換えて保存すると、劇団員の楽屋に「お知らせ」として出ます。空にすると消えます</span></label>' : '') +
     '<div class="row end"><button class="btn brand" id="saveWork">' + (w.id ? '変更を保存' : '作品を登録') + '</button></div></form>' +
     (w.id ? stepsCard(w, roles) + castCard(w, cast, roles) : '');
   document.getElementById('workForm').onsubmit = function (e) {
     e.preventDefault();
     var f = e.target, v = function (n) { return f.elements.namedItem(n).value; };
     var data = { id: w.id, title: v('title'), firstDate: v('firstDate'), lastDate: v('lastDate') || v('firstDate'), venue: v('venue'), status: v('status') };
+    if (w.id) data.notice = v('notice');
     var b = document.getElementById('saveWork'); b.disabled = true;
     api('saveWork', { work: data }).then(function (nw) {
       b.disabled = false; toast('保存しました');
@@ -1509,13 +1835,43 @@ function viewLines(scriptId) {
     var sc = r[0].filter(function (x) { return x.id === scriptId; })[0];
     if (!sc) throw { code: 'notfound', message: 'この台本は見つかりません' };
     document.getElementById('lnBack').href = '#/admin/roles/' + sc.workId;
-    return api('roles', { workId: sc.workId }).then(function (roles) {
-      var lines = r[1] ? migrateLines(r[1].lines) : null;
+    return Promise.all([api('roles', { workId: sc.workId }), r[1] ? null : carryOver(sc, r[0])]).then(function (rr) {
+      var roles = rr[0];
+      var lines = r[1] ? migrateLines(r[1].lines) : rr[1];
       LN_REV[scriptId] = r[1] ? (r[1].rev || 1) : 0;
+      if (!r[1] && rr[1]) saveLinesApi(sc, lines).catch(function (err) { toast(err.message || '引き継いだ割り振りを保存できませんでした'); });
       var mode = store.get('lnMode', '') || (window.innerWidth >= 900 ? 'pdf' : 'list');
       if (mode === 'pdf') renderLinesPdf(sc, roles, lines || []); else renderLines(sc, roles, lines);
     });
   }).catch(function (e) { if (!onAuthError(e, 'admin')) { var m = document.getElementById('ln'); if (m) m.innerHTML = '<div class="card">' + esc(e.message) + '</div>'; } });
+}
+/* 新しい版の台本に、前の版の割り振りを引き継ぐか聞く。
+   行のID・役・読み・録音とのつながりをそのまま持ってくるので、劇団員の覚え具合の記録も続く */
+var CARRY_FROM = {};
+function carryOver(sc, shelf) {
+  var olds = shelf.filter(function (x) { return x.workId === sc.workId && x.id !== sc.id; })
+    .sort(function (a, b) { return (Number(b.version) || 0) - (Number(a.version) || 0); });
+  var find = function (i) {
+    if (i >= olds.length || i >= 4) return Promise.resolve(null);
+    return api('lines', { scriptId: olds[i].id }).then(function (d) { return d && d.lines && d.lines.length ? { src: olds[i], lines: d.lines } : find(i + 1); }, function () { return find(i + 1); });
+  };
+  return find(0).then(function (hit) {
+    if (!hit) return null;
+    return new Promise(function (resolve) {
+      var v = document.createElement('div'); v.className = 'veil';
+      v.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="co-t"><div class="pass"><h2 id="co-t">前の版の割り振りを引き継ぎますか？</h2>' +
+        '<p>「' + esc(hit.src.label) + '」の割り振り（' + hit.lines.length + '行）があります。引き継ぐと、役・読み・録音とのつながりと、劇団員の覚え具合の記録がそのまま続きます。</p>' +
+        '<p class="note">直したセリフだけを、新しい台本に合わせて書き換えてください。囲みの位置は、ページがずれていたら囲み直してください。</p>' +
+        '<div class="row"><button class="btn main" data-c="yes">引き継ぐ</button><button class="btn quiet" data-c="no">はじめから割り振る</button></div></div></div>';
+      document.body.appendChild(v);
+      v.onclick = function (e) {
+        var b = e.target.closest('[data-c]'); if (!b) return; v.remove();
+        if (b.dataset.c !== 'yes') return resolve(null);
+        toast('前の版から引き継いで、新しい版に保存しました'); CARRY_FROM[sc.id] = hit.src.id;
+        resolve(migrateLines(JSON.parse(JSON.stringify(hit.lines))));
+      };
+    });
+  });
 }
 /* 割り振りデータ（schemaVersion 2）：行ごとに変わらないID、複数の役（rs）、かな読み（y）を持つ */
 var LN_REV = {};
@@ -1536,9 +1892,11 @@ function saveLinesApi(sc, lines, force) {
     var o = { id: l.id, k: l.k, r: l.r, rs: l.rs, t: l.t, y: l.y || '', q: !!l.q };
     if (l.box) { o.p = l.p; o.box = l.box; o.v = l.v; }
     if (l.audio) o.audio = l.audio;
+    if (l.chg) o.chg = l.chg;
     return o;
   });
-  return api('saveLines', { scriptId: sc.id, lines: clean, baseRev: LN_REV[sc.id] || 0, force: !!force }).then(function (res) {
+  return api('saveLines', { scriptId: sc.id, lines: clean, baseRev: LN_REV[sc.id] || 0, force: !!force, carryFrom: CARRY_FROM[sc.id] || '' }).then(function (res) {
+    delete CARRY_FROM[sc.id];
     LN_REV[sc.id] = res.rev; return res;
   }, function (err) {
     if (err.code !== 'conflict') throw err;
@@ -2097,6 +2455,180 @@ function pdfPages(blob) {
 }
 
 /* ===================== 管理：録音 ===================== */
+/* ===================== 管理：録音とセリフをつなぐ =====================
+   録音を端末で解析して、声のかたまり（無音で区切られた部分）を見つけ、
+   セリフの文字数に合わせて「どの行が何秒から何秒か」を自動で当てはめる。最後は耳で確かめて直す。 */
+function viewAudioMap(workId) {
+  app.innerHTML = dayHead('録音とセリフをつなぐ', '<a class="btn ghost sm" href="#/admin/audio/' + esc(workId) + '">← 録音</a>') + '<main class="wrap" id="am">' + loading() + '</main>';
+  var main = document.getElementById('am');
+  Promise.all([api('shelf', {}), api('audios', { workId: workId })]).then(function (r) {
+    var sc = r[0].filter(function (x) { return x.workId === workId && x.status === 'final'; })[0];
+    if (!sc) throw { message: '先に台本を「確定版」にしてください' };
+    if (!r[1].length) throw { message: '先に録音を入れてください' };
+    return api('lines', { scriptId: sc.id }).then(function (d) {
+      if (!d) throw { message: '先にセリフを割り振ってください' };
+      LN_REV[sc.id] = d.rev || 1;
+      renderAudioMap(workId, sc, migrateLines(d.lines), r[1]);
+    });
+  }).catch(function (e) { if (!onAuthError(e, 'admin')) main.innerHTML = '<div class="card">' + esc(e.message || '開けませんでした') + '</div>'; });
+}
+/* 録音を8kHzのモノラルに落として、50msごとの音の大きさを出す */
+function audioEnergy(blob) {
+  return blob.arrayBuffer().then(function (buf) {
+    var C = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    var ctx = new C(1, 8000, 8000);
+    return new Promise(function (res, rej) { ctx.decodeAudioData(buf, res, function () { rej({ message: 'この録音は解析できませんでした（PCのChromeで試してください）' }); }); });
+  }).then(function (ab) {
+    var d = ab.getChannelData(0), sr = ab.sampleRate, hop = Math.round(sr * 0.05), n = Math.floor(d.length / hop), e = new Float32Array(n);
+    for (var i = 0; i < n; i++) { var s = 0; for (var k = i * hop, z = k + hop; k < z; k++) s += d[k] * d[k]; e[i] = Math.sqrt(s / hop); }
+    return { e: e, step: 0.05, dur: ab.duration };
+  });
+}
+/* 声のかたまりを探す：静かな部分の大きさから基準を決め、0.35秒以上の無音で区切る */
+function speechSegments(en, from, to) {
+  var e = en.e, st = en.step, a = Math.floor(from / st), b = Math.min(e.length, Math.ceil(to / st));
+  var part = Array.prototype.slice.call(e, a, b).sort(function (x, y) { return x - y; });
+  if (!part.length) return [];
+  var floor = part[Math.floor(part.length * 0.1)], loud = part[Math.floor(part.length * 0.9)];
+  var thr = floor + (loud - floor) * 0.18, gap = Math.round(0.35 / st), out = [], on = -1, quiet = 0;
+  for (var i = a; i < b; i++) {
+    if (e[i] > thr) { if (on < 0) on = i; quiet = 0; }
+    else if (on >= 0 && ++quiet >= gap) { out.push([on * st, (i - quiet + 1) * st]); on = -1; quiet = 0; }
+  }
+  if (on >= 0) out.push([on * st, b * st]);
+  return out.filter(function (s) { return s[1] - s[0] >= 0.25; });
+}
+/* セリフ（文字数）と声のかたまりを、順番を保ったまま当てはめる（動的計画法） */
+function alignSegments(lines, segs) {
+  var L = lines.length, S = segs.length, K = 6;
+  if (!L || !S) return [];
+  var chars = lines.map(function (l) { return Math.max(2, normSay(l.y || l.t).length); });
+  var totalC = chars.reduce(function (x, y) { return x + y; }, 0), totalT = segs.reduce(function (x, s) { return x + s[1] - s[0]; }, 0);
+  var rate = totalT / totalC, INF = 1e18;
+  var dp = [], bk = [];
+  for (var i = 0; i <= L; i++) { dp.push(new Float64Array(S + 1).fill(INF)); bk.push(new Int16Array(S + 1)); }
+  dp[0][0] = 0;
+  for (i = 1; i <= L; i++) {
+    var want = chars[i - 1] * rate;
+    for (var j = 1; j <= S; j++) {
+      var talk = 0;
+      for (var k = 1; k <= K && j - k >= 0; k++) {
+        talk += segs[j - k][1] - segs[j - k][0];
+        if (dp[i - 1][j - k] >= INF) continue;
+        var c = Math.pow(Math.log((talk + 0.3) / (want + 0.3)), 2) + (k - 1) * 0.15;
+        if (dp[i - 1][j - k] + c < dp[i][j]) { dp[i][j] = dp[i - 1][j - k] + c; bk[i][j] = k; }
+      }
+    }
+  }
+  /* 録音がセリフより長い（雑談などが入る）こともあるので、終わりは一番よいところを選ぶ */
+  var bestJ = S, best = INF;
+  for (j = L; j <= S; j++) if (dp[L][j] < best) { best = dp[L][j]; bestJ = j; }
+  if (best >= INF) return [];
+  var out = new Array(L); j = bestJ;
+  for (i = L; i >= 1; i--) { var kk = bk[i][j]; out[i - 1] = { start: Math.max(0, segs[j - kk][0] - 0.15), end: segs[j - 1][1] + 0.15 }; j -= kk; }
+  return out;
+}
+function renderAudioMap(workId, sc, lines, audios) {
+  var main = document.getElementById('am'); if (!main) return;
+  var scenes = [{ name: 'はじめから', i: 0 }];
+  lines.forEach(function (l, i) { if (l.k === 'scene') scenes.push({ name: l.t, i: i }); });
+  var state = { audio: audios[0], en: null, blob: null, url: '', from: 0, to: lines.length, startSec: 0, endSec: 0 };
+  var spoken = function () { return lines.slice(state.from, state.to).filter(function (l) { return l.k === 'line'; }); };
+  var A = new Audio(), stopT = null;
+  var playSpan = function (s, e) { clearTimeout(stopT); A.currentTime = s; A.play(); stopT = setTimeout(function () { A.pause(); }, Math.max(200, (e - s) * 1000)); };
+  main.innerHTML = '<div class="card"><h2>1. 録音と範囲を選ぶ</h2>' +
+    '<p class="note" style="margin-top:0">PC（Chrome）向けです。録音を端末で解析するので、1時間の録音で数十秒かかります。場ごとに分けてつなぐと、ずれにくくなります。</p>' +
+    '<div class="two"><label class="f">録音<select class="in" id="amAudio">' + audios.map(function (a, i) { return '<option value="' + i + '">' + esc(a.label) + '</option>'; }).join('') + '</select></label>' +
+    '<label class="f">場<select class="in" id="amScene"><option value="all">台本ぜんぶ</option>' + scenes.map(function (s2, i) { return i ? '<option value="' + i + '">' + esc(s2.name) + '</option>' : ''; }).join('') + '</select></label></div>' +
+    '<div class="two"><label class="f">録音の何秒から<input class="in" id="amFrom" type="text" value="0:00" inputmode="numeric"><span>場の頭のセリフが始まるあたり</span></label>' +
+    '<label class="f">何秒まで<input class="in" id="amTo" type="text" value="" placeholder="最後まで" inputmode="numeric"></label></div>' +
+    '<div class="row"><button class="btn brand" id="amRun">録音を解析して、自動でつなぐ</button><span class="note" id="amSay"></span></div><div class="prog" id="amProg" hidden><i></i></div></div>' +
+    '<div id="amList"></div>';
+  var say = function (t) { var el = document.getElementById('amSay'); if (el) el.textContent = t; };
+  var secOf = function (v) { v = String(v || '').trim(); if (!v) return null; var p = v.split(':').map(Number); return p.length === 3 ? p[0] * 3600 + p[1] * 60 + p[2] : p.length === 2 ? p[0] * 60 + p[1] : p[0]; };
+  document.getElementById('amScene').onchange = function () {
+    var v = this.value;
+    if (v === 'all') { state.from = 0; state.to = lines.length; }
+    else { var k = +v; state.from = scenes[k].i; state.to = scenes[k + 1] ? scenes[k + 1].i : lines.length; }
+    drawList(null);
+  };
+  document.getElementById('amAudio').onchange = function () { state.audio = audios[+this.value]; state.en = null; state.blob = null; };
+  var getAudio = function () {
+    if (state.en) return Promise.resolve();
+    var bar = document.getElementById('amProg'); bar.hidden = false;
+    say('録音を読み込んでいます…');
+    return scriptBlob(Object.assign({ workId: workId }, state.audio), function (p) { bar.firstChild.style.width = Math.round(p * 70) + '%'; }, 'audio').then(function (blob) {
+      state.blob = blob; if (state.url) URL.revokeObjectURL(state.url); state.url = URL.createObjectURL(blob); A.src = state.url;
+      say('録音を解析しています…（しばらくお待ちください）'); bar.firstChild.style.width = '80%';
+      return audioEnergy(blob);
+    }).then(function (en) { state.en = en; bar.hidden = true; });
+  };
+  document.getElementById('amRun').onclick = function () {
+    var b = this; b.disabled = true;
+    getAudio().then(function () {
+      var from = secOf(document.getElementById('amFrom').value) || 0, to = secOf(document.getElementById('amTo').value) || state.en.dur;
+      var sp = spoken();
+      /* 基準点（📌）で区切り、基準点と基準点のあいだだけで当てはめる。途中のずれが後ろに広がらない */
+      var cuts = [];
+      sp.forEach(function (l, i) { if (l.audio && l.audio.pin && l.audio.audioId === state.audio.id) cuts.push({ i: i, t: l.audio.start }); });
+      var blocks = [], prevI = 0, prevT = from;
+      cuts.forEach(function (c) { if (c.i > prevI) blocks.push({ a: prevI, b: c.i, t0: prevT, t1: c.t }); prevI = c.i; prevT = c.t; });
+      blocks.push({ a: prevI, b: sp.length, t0: prevT, t1: to });
+      var bad = 0, few = 0;
+      blocks.forEach(function (bk) {
+        var part = sp.slice(bk.a, bk.b); if (!part.length || bk.t1 <= bk.t0) { bad += part.length; return; }
+        var segs = speechSegments(state.en, bk.t0, bk.t1); if (segs.length < part.length) few++;
+        var res = alignSegments(part, segs);
+        if (!res.length) { bad += part.length; return; }
+        part.forEach(function (l, i) {
+          var pin = l.audio && l.audio.pin && l.audio.audioId === state.audio.id;
+          if (pin && l.audio.verified) return;
+          l.audio = { audioId: state.audio.id, start: pin ? l.audio.start : Math.round(res[i].start * 100) / 100, end: Math.round(res[i].end * 100) / 100, verified: false, pin: !!pin };
+        });
+      });
+      if (bad === sp.length) throw { message: 'うまく当てはめられませんでした。範囲を短くするか、📌で基準点を置いて試してください' };
+      say((sp.length - bad) + '行に当てはめました' + (cuts.length ? '（基準点 ' + cuts.length + ' か所）' : '') + '。▶で聞いて、ずれていたら直すか、合っている行に📌を置いてもう一度押してください' + (few ? '。声のかたまりが少ない区間があります' : ''));
+      b.disabled = false; drawList(true);
+    }).catch(function (err) { b.disabled = false; document.getElementById('amProg').hidden = true; say(err.message || '解析できませんでした'); });
+  };
+  var drawList = function (dirty) {
+    var box = document.getElementById('amList'), sp = spoken();
+    var done = sp.filter(function (l) { return l.audio && l.audio.verified; }).length, has = sp.filter(function (l) { return l.audio; }).length;
+    box.innerHTML = '<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">2. 耳で確かめる</h2><span class="note">つないだ ' + has + ' / ' + sp.length + '・確認済み ' + done + '</span></div>' +
+      '<p class="note">▶ で聞き、ずれていたら「始」「終」を ±0.2秒 ずつ動かします。合っていたら ✓。途中から大きくずれるときは、始まりが合っている行に <b>📌（基準点）</b>を置いて、もう一度「自動でつなぐ」を押すと、基準点のあいだだけで当てはめ直します。</p>' +
+      '<div class="amrows">' + sp.map(function (l) {
+        var a = l.audio && l.audio.audioId === state.audio.id ? l.audio : null;
+        return '<div class="amrow' + (a && a.verified ? ' ok' : '') + '" data-id="' + esc(l.id) + '"><span class="lnchip" style="--c:' + roleColor(l.r) + '">' + esc(roleText(l)) + '</span>' +
+          '<span class="am-t">' + esc(l.t.slice(0, 60)) + (l.t.length > 60 ? '…' : '') + '</span>' +
+          (a ? '<span class="am-tm">' + clock(a.start) + '.' + String(Math.floor(a.start % 1 * 10)) + '–' + clock(a.end) + '.' + String(Math.floor(a.end % 1 * 10)) + '</span>' +
+            '<span class="am-b"><button class="btn quiet sm" data-a="play" aria-label="聞く">▶</button><button class="btn quiet sm" data-a="s-">始−</button><button class="btn quiet sm" data-a="s+">始＋</button>' +
+            '<button class="btn quiet sm" data-a="e-">終−</button><button class="btn quiet sm" data-a="e+">終＋</button><button class="btn quiet sm" data-a="ok" aria-label="確認済みにする">✓</button><button class="btn quiet sm' + (a.pin ? ' on' : '') + '" data-a="pin" aria-label="この行の始まりを基準点にする">📌</button><button class="btn quiet sm" data-a="clear" aria-label="つながりを外す">✕</button></span>'
+            : '<span class="am-tm note">' + (l.audio ? 'ほかの録音とつながっています' : '未') + '</span>') + '</div>';
+      }).join('') + '</div><div class="row end"><button class="btn brand" id="amSave"' + (dirty ? '' : ' disabled') + '>保存する</button></div></div>';
+    box.querySelector('.amrows').onclick = function (e) {
+      var bt = e.target.closest('[data-a]'); if (!bt) return;
+      var l = lines.filter(function (x) { return x.id === bt.closest('.amrow').dataset.id; })[0], a = l.audio, act = bt.dataset.a;
+      if (!state.url && act === 'play') { getAudio().then(function () { playSpan(a.start, a.end); }); return; }
+      if (act === 'play') { playSpan(a.start, a.end); return; }
+      if (act === 'clear') l.audio = null;
+      else if (act === 'ok') a.verified = !a.verified;
+      else if (act === 'pin') a.pin = !a.pin;
+      else { var d = act[1] === '+' ? 0.2 : -0.2; if (act[0] === 's') a.start = Math.max(0, Math.round((a.start + d) * 100) / 100); else a.end = Math.max(a.start + 0.2, Math.round((a.end + d) * 100) / 100); a.verified = false; if (state.url) playSpan(act[0] === 's' ? a.start : Math.max(a.start, a.end - 1.5), a.end); }
+      drawList(true);
+    };
+    document.getElementById('amSave').onclick = function () {
+      var b = this; b.disabled = true;
+      var map = {}; sp.forEach(function (l) { map[l.id] = l.audio || null; });
+      var send = function (force) {
+        return api('saveAudioMap', { scriptId: sc.id, audioMap: map, baseRev: LN_REV[sc.id] || 0, force: !!force }).then(function (r) { LN_REV[sc.id] = r.rev; toast('保存しました。劇団員の「覚える」「運転中」で、相手役が録音の声になります'); },
+          function (err) { if (err.code !== 'conflict') throw err; return askConflict().then(function (mine) { if (mine) return send(true); viewAudioMap(workId); }); });
+      };
+      send(false).catch(function (err) { b.disabled = false; if (!onAuthError(err, 'admin')) toast(err.message); });
+    };
+  };
+  drawList(false);
+}
+
 function viewAudio(workId) {
   app.innerHTML = dayHead('録音', '<a class="btn ghost sm" href="#/admin/w/' + esc(workId) + '">← 作品</a>') + '<main class="wrap" id="au">' + loading() + '</main>';
   cachedAll([['desk'], ['audios', { workId: workId }]], function (r) {
@@ -2112,7 +2644,9 @@ function renderAudio(w, list) {
     '<p class="note" style="margin:-4px 0 12px">ここに入れた録音を、劇団員が「聞き流す」で再生できます。1時間を超える録音も大丈夫です（300MBまで）。<br>iPhoneのボイスメモ（.m4a）やMP3をそのまま入れられます。<br><b>おすすめ：モノラル・32〜48kbps（1時間で15〜30MBほど）。</b>ファイルが小さいほど送るのも劇団員の通信量も軽くなります。</p>' +
     '<label class="btn brand">＋ 録音ファイルを入れる<input type="file" accept="audio/*,.m4a,.mp3,.wav,.aac" class="sr" id="aufile"></label>' +
     '<div class="prog" id="auprog" hidden><i></i></div>' +
-    '<div class="audiolist" id="auList">' + audioRows(list) + '</div></section>';
+    '<div class="audiolist" id="auList">' + audioRows(list) + '</div></section>' +
+    '<section class="card"><h2>録音とセリフをつなぐ</h2><p class="note" style="margin-top:0">録音のどこがどのセリフかを自動で当てはめます（PC向け）。つなぐと、劇団員の「覚える」「運転中」で相手役が録音の声になります。</p>' +
+    '<a class="btn main" href="#/admin/audiomap/' + esc(w.id) + '">録音とセリフをつなぐ</a></section>';
   var box = document.getElementById('auList');
   var redraw = function () { box.innerHTML = audioRows(list); };
   document.getElementById('aufile').onchange = function (e) {
@@ -2157,7 +2691,7 @@ function viewAdminCode() {
   var first = store.get('adminMustSet', false);
   app.innerHTML = dayHead(first ? 'はじめまして' : '管理者コード', first ? '' : '<a class="btn ghost sm" href="#/admin">← デスク</a>') +
     '<main class="wrap"><form class="card login" id="codeForm"><h2>' + (first ? 'これから使う管理者コードを決めてください' : '新しい管理者コード') + '</h2>' +
-    '<p class="note" style="margin:0 0 12px">6文字以上の英数字。ほかの管理者にも、このコードを伝えてください。前のコードは使えなくなります。</p>' +
+    '<p class="note" style="margin:0 0 12px">6文字以上の英数字。管理者は一人ずつ自分のコードを持ちます（ほかの人に教える必要はありません）。前のコードは使えなくなります。</p>' +
     '<label class="sr" for="nc1">新しいコード</label><input class="code-in" id="nc1" maxlength="20" autocapitalize="characters" spellcheck="false" autocomplete="off" style="letter-spacing:.15em" placeholder="新しいコード">' +
     '<label class="sr" for="nc2">もう一度</label><input class="code-in" id="nc2" maxlength="20" autocapitalize="characters" spellcheck="false" autocomplete="off" style="letter-spacing:.15em;margin-top:10px" placeholder="もう一度">' +
     '<div class="say">' + ART.sheep() + '<div class="bubble" id="codeSay">英字の大文字・小文字は区別しません</div></div>' +
@@ -2173,6 +2707,73 @@ function viewAdminCode() {
       toast('管理者コードを「' + r.code + '」にしました'); go('/admin');
     }).catch(function (err) { if (!onAuthError(err, 'admin')) say.textContent = err.message; });
   };
+}
+
+/* ===================== 管理：管理者の追加・一覧 =====================
+   管理者は一人ずつ自分のコードを持つ。追加すると「はじめのコード」が一度だけ出るので、本人に伝える。
+   本人は最初に入ったとき、自分だけのコードに決め直す。 */
+function viewAdmins() {
+  app.innerHTML = dayHead('管理者', '<a class="btn ghost sm" href="#/admin">← デスク</a>') + '<main class="wrap" id="adm">' + loading() + '</main>';
+  var main = document.getElementById('adm'), list = [], me = '';
+  var row = function (a) {
+    var state = !a.active ? '<span class="tag off">停止中</span>' : a.own ? '<span class="tag">利用中</span>' : '<span class="tag wait">はじめのコードのまま</span>';
+    return '<div class="admrow" data-id="' + esc(a.id) + '"><span class="adm-t"><b>' + esc(a.name) + (a.id === me ? '（あなた）' : '') + '</b>' + state +
+      '<small>' + (a.lastSeenAt ? '最後に入った日 ' + esc(day(a.lastSeenAt)) : 'まだ入っていません') + '</small></span>' +
+      '<span class="acts"><button class="btn quiet sm" data-act="rename">名前</button>' +
+      (a.id === me ? '<a class="btn quiet sm" href="#/admin/code">自分のコードを変える</a>' :
+        '<button class="btn quiet sm" data-act="reissue">はじめのコードを出し直す</button>' +
+        '<button class="btn quiet sm' + (a.active ? ' danger' : '') + '" data-act="toggle">' + (a.active ? '止める' : '戻す') + '</button>') + '</span></div>';
+  };
+  var showCode = function (name, code) {
+    var v = document.createElement('div'); v.className = 'veil';
+    v.innerHTML = '<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ac-t"><div class="pass"><h2 id="ac-t">' + esc(name) + 'さんの、はじめのコード</h2>' +
+      '<p class="bigcode">' + esc(code) + '</p>' +
+      '<p class="note">この画面を閉じると、二度と表示されません。本人に直接伝えてください（LINEなら個別に）。本人が最初に入ったとき、自分だけのコードに決め直します。</p>' +
+      '<div class="row"><button class="btn quiet" data-c="copy">コードだけコピー</button><button class="btn quiet" data-c="msg">入口の案内ごとコピー</button><button class="btn main" data-c="close">伝えたので閉じる</button></div></div></div>';
+    document.body.appendChild(v);
+    v.onclick = function (e) {
+      var b = e.target.closest('[data-c]'); if (!b) return;
+      if (b.dataset.c === 'copy') { copyText(code); return; }
+      if (b.dataset.c === 'msg') {
+        copyText(name + 'さん、台本読み合わせ練習アプリの管理者に登録しました。\n① 次のリンクを開く：' + location.href.split('#')[0] + '#/admin\n② はじめのコード「' + code + '」を入れる\n③ 自分だけの管理者コードを決める\n（このメッセージは読んだら消してください）', '案内文をコピーしました。本人にだけ送ってください');
+        return;
+      }
+      v.remove();
+    };
+  };
+  var redraw = function () {
+    main.innerHTML = '<div class="card"><h2>管理者の一覧</h2><p class="note" style="margin-top:0">管理者は一人ずつ自分のコードで入ります。止めた人のコードはすぐ使えなくなります（データは消えません）。</p>' +
+      '<div class="admlist">' + list.map(row).join('') + '</div></div>' +
+      '<form class="card" id="addAdmin"><h2>管理者を追加</h2><div class="row"><label class="f" style="flex:1">名前<input class="in" name="name" maxlength="30" placeholder="例：佐藤（演出）" required></label>' +
+      '<button class="btn main" style="align-self:flex-end">追加して、はじめのコードを出す</button></div></form>';
+    document.getElementById('addAdmin').onsubmit = function (e) {
+      e.preventDefault();
+      var f = e.target, n = f.elements.namedItem('name').value, btn = f.querySelector('button'); btn.disabled = true;
+      api('saveAdmin', { name: n }).then(function (r) { list.push(r.admin); redraw(); showCode(r.admin.name, r.code); })
+        .catch(function (err) { btn.disabled = false; if (!onAuthError(err, 'admin')) toast(err.message); });
+    };
+  };
+  main.onclick = function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var id = b.closest('.admrow').dataset.id, a = list.filter(function (x) { return x.id === id; })[0], act = b.dataset.act;
+    var put = function (na) { list = list.map(function (x) { return x.id === na.id ? na : x; }); redraw(); };
+    if (act === 'rename') {
+      var nn = prompt('名前', a.name); if (!nn || nn === a.name) return;
+      api('saveAdmin', { id: a.id, name: nn }).then(function (r) { put(r.admin); if (a.id === me) store.set('adminName', r.admin.name); })
+        .catch(function (err) { if (!onAuthError(err, 'admin')) toast(err.message); });
+      return;
+    }
+    if ((act === 'reissue' || (act === 'toggle' && a.active)) && b.dataset.sure !== '1') {
+      b.dataset.sure = '1'; var old = b.textContent; b.textContent = '本当に？もう一度押す';
+      setTimeout(function () { if (b.isConnected) { b.dataset.sure = ''; b.textContent = old; } }, 3500); return;
+    }
+    b.disabled = true;
+    (act === 'reissue' ? api('reissueAdmin', { id: a.id }) : api('setAdminActive', { id: a.id, active: !a.active }))
+      .then(function (r) { put(r.admin); if (r.code) showCode(r.admin.name, r.code); else toast(r.admin.active ? '戻しました' : '止めました'); })
+      .catch(function (err) { b.disabled = false; if (!onAuthError(err, 'admin')) toast(err.message); });
+  };
+  api('admins', {}).then(function (r) { list = r.admins; me = r.me; redraw(); })
+    .catch(function (e) { if (!onAuthError(e, 'admin')) main.innerHTML = '<div class="card">' + esc(e.message) + '</div>'; });
 }
 
 /* ===================== 大きなファイルの分割送受信 ===================== */
@@ -2302,7 +2903,7 @@ function viewPdf(blob, x) {
 function kb(n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; }
 function day(iso) { if (!iso) return ''; var d = new Date(iso); return (d.getMonth() + 1) + '/' + d.getDate(); }
 
-function logout() { store.del('admin'); clearReads(); go('/'); }
+function logout() { store.del('admin'); store.del('adminName'); clearReads(); go('/'); }
 
 /* ===================== 管理：台本棚 ===================== */
 function viewShelf(workId) {
@@ -2495,7 +3096,7 @@ var DEMO = {
   api: function (action, p, token) {
     var db = this.load(), self = this;
     var ok = function (d) { return { ok: true, data: d }; }, ng = function (c, m) { return { ok: false, code: c, message: m }; };
-    var pw = function (w) { return { id: w.id, title: w.title, firstDate: w.firstDate, lastDate: w.lastDate, venue: w.venue, status: w.status, hasPoster: false, note: w.note }; };
+    var pw = function (w) { return { id: w.id, title: w.title, firstDate: w.firstDate, lastDate: w.lastDate, venue: w.venue, status: w.status, hasPoster: false, note: w.note, notice: w.notice || '', noticeAt: w.noticeAt || '' }; };
     var pa = function (a) { return { id: a.id, workId: a.workId, name: a.name, roles: a.roles ? a.roles.split(',') : [], code: a.code, active: a.active, lastSeenAt: a.lastSeenAt }; };
     var isAdmin = token === 'demo-admin';
     var norm = function (v) { return String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); };
@@ -2525,8 +3126,32 @@ var DEMO = {
         return ok({ actor: { id: me.id, name: me.name, roles: pa(me).roles }, work: pw(db.works.filter(function (w) { return w.id === me.workId; })[0]),
           script: mf || null, audios: db.audios.filter(function (x) { return x.workId === me.workId; }),
           linesAt: mf && db.lines && db.lines[mf.id] ? 'demo' : '' });
-      case 'adminLogin': return norm(p.code) === (db.adminCode || 'DEMO2027') ? ok({ token: 'demo-admin', mustSet: false }) : ng('badcode', '管理者コードが違います');
-      case 'setAdminCode': if (norm(p.code).length < 6) return ng('invalid', '6文字以上の英数字にしてください'); db.adminCode = norm(p.code); self.save(); return ok({ token: 'demo-admin', code: db.adminCode });
+      case 'adminLogin':
+        db.admins = db.admins || [{ id: 'ad_first', name: '管理者1', code: db.adminCode || 'DEMO2027', own: true, active: true, lastSeenAt: '' }];
+        var la = db.admins.filter(function (x) { return x.active && x.code === norm(p.code); })[0];
+        if (!la) return ng('badcode', '管理者コードが違います');
+        db.me = la.id; la.lastSeenAt = new Date().toISOString(); self.save(); return ok({ token: 'demo-admin', mustSet: !la.own, name: la.name });
+      case 'setAdminCode':
+        if (norm(p.code).length < 6) return ng('invalid', '6文字以上の英数字にしてください');
+        var sa = (db.admins || []).filter(function (x) { return x.id === (db.me || 'ad_first'); })[0];
+        if (sa) { sa.code = norm(p.code); sa.own = true; } db.adminCode = norm(p.code); self.save(); return ok({ token: 'demo-admin', code: norm(p.code) });
+      case 'admins':
+        db.admins = db.admins || [{ id: 'ad_first', name: '管理者1', code: db.adminCode || 'DEMO2027', own: true, active: true, lastSeenAt: '' }];
+        var padm = function (x) { return { id: x.id, name: x.name, own: x.own, active: x.active, lastSeenAt: x.lastSeenAt }; };
+        return ok({ me: db.me || 'ad_first', admins: db.admins.map(padm) });
+      case 'saveAdmin':
+        var an = String(p.name || '').trim(); if (!an) return ng('invalid', '名前を入れてください'); db.admins = db.admins || [];
+        if (p.id) { var ea = db.admins.filter(function (x) { return x.id === p.id; })[0]; ea.name = an; self.save(); return ok({ admin: { id: ea.id, name: ea.name, own: ea.own, active: ea.active, lastSeenAt: ea.lastSeenAt } }); }
+        var nc = newCode() + newCode().slice(0, 2), na2 = { id: 'ad' + Date.now(), name: an, code: nc, own: false, active: true, lastSeenAt: '' };
+        db.admins.push(na2); self.save(); return ok({ admin: { id: na2.id, name: na2.name, own: false, active: true, lastSeenAt: '' }, code: nc });
+      case 'reissueAdmin':
+        if (p.id === (db.me || 'ad_first')) return ng('invalid', '自分のコードは「管理者コードを変える」から変えてください');
+        var ra = db.admins.filter(function (x) { return x.id === p.id; })[0]; ra.code = newCode() + newCode().slice(0, 2); ra.own = false; self.save();
+        return ok({ admin: { id: ra.id, name: ra.name, own: false, active: ra.active, lastSeenAt: ra.lastSeenAt }, code: ra.code });
+      case 'setAdminActive':
+        if (p.id === (db.me || 'ad_first')) return ng('invalid', '自分自身は止められません');
+        var ta = db.admins.filter(function (x) { return x.id === p.id; })[0]; ta.active = !!p.active; self.save();
+        return ok({ admin: { id: ta.id, name: ta.name, own: ta.own, active: ta.active, lastSeenAt: ta.lastSeenAt } });
       case 'deleteActor': db.actors = db.actors.filter(function (x) { return x.id !== p.actorId; }); self.save(); return ok({ deleted: p.actorId });
       case 'roles': return ok(rolesOf(p.workId));
       case 'saveRole':
@@ -2573,6 +3198,7 @@ var DEMO = {
       case 'saveWork':
         if (!String(p.work.title || '').trim()) return ng('invalid', '作品名を入れてください');
         var w = p.work.id ? db.works.filter(function (x) { return x.id === p.work.id; })[0] : null;
+        if (w && p.work.notice !== undefined && p.work.notice !== (w.notice || '')) w.noticeAt = new Date().toISOString();
         if (w) Object.assign(w, p.work); else { w = Object.assign({ posterId: '', note: '' }, p.work, { id: 'w' + Date.now() }); db.works.push(w); }
         self.save(); return ok(pw(w));
       case 'uploadPoster': return ok(pw(db.works.filter(function (x) { return x.id === p.workId; })[0]));
@@ -2629,7 +3255,7 @@ function splash() {
   if (seen || location.hash.indexOf('#/admin') === 0) return;
   var el = document.createElement('div');
   el.className = 'splash'; el.setAttribute('aria-hidden', 'true');
-  el.innerHTML = '<div class="splash-in"><img src="' + LOGO + '" alt="" width="260" height="140">' + ART.sheep('happy') + '<b>楽屋</b><small>開場します</small></div>';
+  el.innerHTML = '<div class="splash-in"><img src="' + LOGO + '" alt="" width="260" height="140">' + ART.sheep('happy') + '<b>台本読み合わせ<br>練習アプリ</b><small>開場します</small></div>';
   document.body.appendChild(el);
   var end = function () { el.classList.add('out'); setTimeout(function () { el.remove(); }, 500); };
   el.addEventListener('click', end);
@@ -2648,22 +3274,29 @@ function route() {
   document.querySelectorAll('.veil').forEach(function (v) { v.remove(); });
   if (!(parts[0] === 'admin' && parts[1] === 'lines')) window.onbeforeunload = null;
   if (parts[0] === 'admin') {
-    stopPlayer();
+    stopPlayer(); stopDrive();
     document.body.className = 'day';
     if (!store.get('admin', '')) return viewAdminLogin();
     if (parts[1] === 'w') return viewAdminWork(parts[2] || 'new');
     if (parts[1] === 'shelf') return viewShelf(parts[2] || '');
     if (parts[1] === 'roles' && parts[2]) return viewRoles(parts[2]);
     if (parts[1] === 'audio' && parts[2]) return viewAudio(parts[2]);
+    if (parts[1] === 'audiomap' && parts[2]) return viewAudioMap(parts[2]);
     if (parts[1] === 'lines' && parts[2]) return viewLines(parts[2]);
     if (parts[1] === 'code' || store.get('adminMustSet', false)) return viewAdminCode();
+    if (parts[1] === 'team') return viewAdmins();
+    if (parts[1] === 'guide') return viewGuide('admin');
     return viewDesk();
   }
   document.body.className = 'night';
   if (!(parts[0] === 'w' && parts[2] === 'listen')) stopPlayer();
   stopLearn();
+  if (!(parts[0] === 'w' && parts[2] === 'drive')) stopDrive();
   if (parts[0] === 'w' && parts[1] && parts[2] === 'listen') return viewListen(parts[1]);
   if (parts[0] === 'w' && parts[1] && parts[2] === 'learn') return viewLearn(parts[1]);
+  if (parts[0] === 'w' && parts[1] && parts[2] === 'drive') return viewDrive(parts[1]);
+  if (parts[0] === 'w' && parts[1] && parts[2] === 'print') return viewPrint(parts[1]);
+  if (parts[0] === 'guide') return viewGuide('member');
   if (parts[0] === 'w' && parts[1]) return viewHome(parts[1]);
   return viewDoor();
 }
